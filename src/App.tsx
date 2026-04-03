@@ -8,7 +8,7 @@ import { NoteInspector } from './components/NoteInspector';
 import { NoteModal } from './components/NoteModal';
 import { useHandNavigation } from './hooks/useHandNavigation';
 import { clearCachedSnapshot, readCachedSnapshot, writeCachedSnapshot } from './lib/snapshot-cache';
-import { defaultLoginEmail, isSupabaseRuntimeEnabled, magicLinkRedirectTo, supabase } from './lib/supabase';
+import { defaultLoginEmail, defaultLoginPassword, isSupabaseRuntimeEnabled, supabase } from './lib/supabase';
 import type { TopologyMode, VaultGraph, VaultNote } from './types';
 import type { ChangeEvent } from 'react';
 
@@ -30,6 +30,7 @@ function App() {
   const [isAuthReady, setIsAuthReady] = useState(!isSupabaseRuntimeEnabled);
   const [isGraphLoading, setIsGraphLoading] = useState(true);
   const [loginEmail, setLoginEmail] = useState(defaultLoginEmail);
+  const [loginPassword, setLoginPassword] = useState(defaultLoginPassword);
   const [isSendingLink, setIsSendingLink] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [runtimeLabel, setRuntimeLabel] = useState(LOCAL_RUNTIME_LABEL);
@@ -222,25 +223,27 @@ function App() {
     void handNavigation.start();
   }
 
-  async function handleSendMagicLink() {
+  async function handleSignIn() {
     if (!supabase) {
       setAuthMessage('Supabase runtime mode is not configured.');
       return;
     }
 
     const email = loginEmail.trim().toLowerCase();
+    const password = loginPassword;
     if (!email) {
       setAuthMessage('Enter an email address.');
+      return;
+    }
+    if (!password) {
+      setAuthMessage('Enter a password.');
       return;
     }
 
     setIsSendingLink(true);
     setAuthMessage(null);
 
-    const { error: signInError } = await supabase.auth.signInWithOtp({
-      email,
-      options: magicLinkRedirectTo ? { emailRedirectTo: magicLinkRedirectTo } : undefined,
-    });
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     setIsSendingLink(false);
 
@@ -248,8 +251,6 @@ function App() {
       setAuthMessage(signInError.message);
       return;
     }
-
-    setAuthMessage(`Magic link sent to ${email}. It should return to ${magicLinkRedirectTo || 'this app'} on this device.`);
   }
 
   async function handleSignOut() {
@@ -283,10 +284,12 @@ function App() {
     return (
       <AuthScreen
         email={loginEmail}
+        password={loginPassword}
         isSubmitting={isSendingLink}
         message={error ?? authMessage}
         onEmailChange={setLoginEmail}
-        onSendLink={handleSendMagicLink}
+        onPasswordChange={setLoginPassword}
+        onSignIn={handleSignIn}
       />
     );
   }

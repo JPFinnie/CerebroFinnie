@@ -1,12 +1,14 @@
 type AuthScreenProps = {
   email: string;
+  password: string;
   isSubmitting: boolean;
   message: string | null;
   onEmailChange: (value: string) => void;
-  onSendLink: () => void;
+  onPasswordChange: (value: string) => void;
+  onSignIn: () => void;
 };
 
-export function AuthScreen({ email, isSubmitting, message, onEmailChange, onSendLink }: AuthScreenProps) {
+export function AuthScreen({ email, password, isSubmitting, message, onEmailChange, onPasswordChange, onSignIn }: AuthScreenProps) {
   return (
     <div className="loading-shell auth-shell">
       <p className="eyebrow">Cerebro Atlas</p>
@@ -20,7 +22,7 @@ export function AuthScreen({ email, isSubmitting, message, onEmailChange, onSend
         className="auth-form"
         onSubmit={(event) => {
           event.preventDefault();
-          onSendLink();
+          onSignIn();
         }}
       >
         <label className="mini-label" htmlFor="login-email">
@@ -34,12 +36,23 @@ export function AuthScreen({ email, isSubmitting, message, onEmailChange, onSend
           value={email}
           onChange={(event) => onEmailChange(event.target.value)}
         />
+        <label className="mini-label" htmlFor="login-password">
+          Password
+        </label>
+        <input
+          id="login-password"
+          className="search-input"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => onPasswordChange(event.target.value)}
+        />
         <button type="submit" className="camera-button auth-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Sending link...' : 'Email me a sign-in link'}
+          {isSubmitting ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
 
-      <p className="support-copy">{message ?? 'Use the magic link on the same device and the session will persist.'}</p>
+      <p className="support-copy">{message ?? 'Enter your credentials to access your private vault.'}</p>
     </div>
   );
 }
