@@ -91,19 +91,29 @@ This is now partially supported in the build pipeline:
 
 ### 3. ApiVaultSource
 
-This is the future option if you want live retrieval from a service.
+This is now the deployment path for private mobile access.
 
 Examples:
 
 - local Node service with filesystem access
 - Tauri desktop shell with native filesystem access
 - authenticated private backend serving note data
+- Vercel function that verifies Supabase Auth and streams a private snapshot from Supabase Storage
 
 Use it when:
 
 - you want live updates without rebuilding snapshots
 - you want controlled remote access
 - you want user auth, permissions, or multi-device support
+
+Current Supabase shape:
+
+1. local machine runs `scripts/build-vault-graph.mjs`
+2. local machine runs `scripts/publish-snapshot.mjs`
+3. snapshot uploads to a private Supabase Storage bucket
+4. deployed app authenticates with Supabase Auth
+5. `/api/snapshot` verifies the bearer token and downloads the snapshot server-side
+6. browser app renders the snapshot and caches it locally for faster repeat access
 
 ## Recommended near-term architecture
 
@@ -112,14 +122,16 @@ For your use case, the pragmatic architecture is:
 1. Keep the viewer app in this repo
 2. Keep the Obsidian vault as the source of truth
 3. Use a local ingestion command to build a snapshot from the vault
-4. Keep generated snapshots out of git by default
-5. Add a publish mode later that exports a sanitized or encrypted snapshot
+4. Publish that snapshot to a private Supabase bucket
+5. Gate remote access through Supabase Auth plus a server-side snapshot proxy
+6. Keep generated snapshots out of git by default
 
 That gives you:
 
 - full control
 - no Obsidian lock-in
 - a path to deployment without exposing the raw vault by accident
+- private on-the-go access from phone or laptop
 
 ## Topology roadmap
 
@@ -148,3 +160,10 @@ Before any remote deployment, define at least one of these:
 - tag-based visibility rules
 - redaction rules
 - encrypted private snapshot delivery
+
+For the current Supabase deployment, the minimum controls should be:
+
+- private bucket only
+- server-side service key only
+- single allowed email enforced in `/api/snapshot`
+- rotated service key if a secret has ever been exposed outside your own env storage

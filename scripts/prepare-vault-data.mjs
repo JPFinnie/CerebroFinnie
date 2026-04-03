@@ -9,6 +9,11 @@ const APP_ROOT = path.resolve(__dirname, '..');
 const SNAPSHOT_PATH = path.join(APP_ROOT, 'public', 'data', 'vault-graph.json');
 
 async function main() {
+  if (hasSupabaseRuntimeConfig()) {
+    console.log('Supabase runtime mode detected; skipping build-time snapshot preparation.');
+    return;
+  }
+
   await fs.mkdir(path.dirname(SNAPSHOT_PATH), { recursive: true });
 
   const ingestSucceeded = await tryRunIngest();
@@ -42,6 +47,12 @@ async function main() {
       'For Vercel, either commit public/data/vault-graph.json or set CEREBRO_SNAPSHOT_URL.',
     ].join(' '),
   );
+}
+
+function hasSupabaseRuntimeConfig() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
+  const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  return Boolean(supabaseUrl && supabasePublishableKey);
 }
 
 async function tryRunIngest() {

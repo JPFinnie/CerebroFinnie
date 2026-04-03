@@ -15,11 +15,14 @@ type ControlHudProps = {
   videoRef: RefObject<HTMLVideoElement | null>;
   handOverlay: HandOverlayState;
   isCameraRunning: boolean;
+  runtimeLabel?: string;
+  sessionEmail?: string | null;
   onSearchChange: (value: string) => void;
   onTopologyChange: (next: TopologyMode) => void;
   onGroupChange: (next: string | null) => void;
   onSelectNote: (noteId: string) => void;
   onToggleCamera: () => void;
+  onSignOut?: () => void;
 };
 
 const TOPOLOGY_COPY: Record<TopologyMode, string> = {
@@ -42,11 +45,14 @@ export function ControlHud({
   videoRef,
   handOverlay,
   isCameraRunning,
+  runtimeLabel,
+  sessionEmail,
   onSearchChange,
   onTopologyChange,
   onGroupChange,
   onSelectNote,
   onToggleCamera,
+  onSignOut,
 }: ControlHudProps) {
   return (
     <section className="control-shell">
@@ -57,6 +63,24 @@ export function ControlHud({
           A local terrain renderer over your actual vault graph, with camera hand tracking layered on top.
         </p>
       </div>
+
+      {sessionEmail ? (
+        <section className="access-shell">
+          <div className="group-header">
+            <div>
+              <p className="mini-label">Access</p>
+              <p className="support-copy">
+                Signed in as {sessionEmail}. {runtimeLabel ?? 'Private snapshot runtime is active.'}
+              </p>
+            </div>
+            {onSignOut ? (
+              <button type="button" className="ghost-link" onClick={onSignOut}>
+                Sign out
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <dl className="hero-metrics">
         <div>
