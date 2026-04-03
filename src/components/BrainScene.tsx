@@ -30,13 +30,13 @@ export function BrainScene({
 
   return (
     <div className="scene-shell">
-      <Canvas camera={{ position: [0, 18, 30], fov: 48 }} dpr={[1, 1.8]} gl={{ antialias: true, alpha: true }}>
-        <fog attach="fog" args={['#06131b', 18, 72]} />
+      <Canvas camera={{ position: [0, 24, 22], fov: 38 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
+        <fog attach="fog" args={['#06131b', 12, 46]} />
         <ambientLight intensity={0.82} />
         <directionalLight position={[18, 22, 12]} intensity={1.35} color="#f0d7ae" />
         <directionalLight position={[-12, 10, -18]} intensity={0.8} color="#80c2dd" />
         <pointLight position={[0, 24, 0]} intensity={0.55} color="#ffb46c" />
-        <Sparkles count={72} scale={[70, 24, 70]} size={1.8} speed={0.08} opacity={0.2} color="#ffe7c9" />
+        <Sparkles count={42} scale={[42, 18, 42]} size={1.45} speed={0.08} opacity={0.14} color="#ffe7c9" />
 
         <SceneCore
           layout={layout}
@@ -75,8 +75,8 @@ function SceneCore({
   onSelect,
 }: SceneCoreProps) {
   const terrainGeometry = useMemo(() => {
-    const extent = Math.max(48, layout.radius * 2.8);
-    const geometry = new PlaneGeometry(extent, extent, 72, 72);
+    const extent = Math.max(28, layout.radius * 2.05);
+    const geometry = new PlaneGeometry(extent, extent, 54, 54);
     geometry.rotateX(-Math.PI / 2);
 
     const position = geometry.getAttribute('position') as BufferAttribute;
@@ -193,7 +193,7 @@ function SceneCore({
           />
         </mesh>
         <lineSegments geometry={terrainWireframe}>
-          <lineBasicMaterial color="#7db5c5" transparent opacity={0.18} />
+          <lineBasicMaterial color="#7db5c5" transparent opacity={0.12} />
         </lineSegments>
       </group>
 
@@ -202,7 +202,7 @@ function SceneCore({
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[allEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#77b8cf" transparent opacity={0.14} />
+          <lineBasicMaterial color="#77b8cf" transparent opacity={0.08} />
         </lineSegments>
       ) : null}
 
@@ -211,7 +211,7 @@ function SceneCore({
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[selectedEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#ffd08b" transparent opacity={0.62} />
+          <lineBasicMaterial color="#ffd08b" transparent opacity={0.44} />
         </lineSegments>
       ) : null}
 
@@ -303,8 +303,8 @@ function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
     }
 
     const desiredTarget = selectedNode
-      ? new Vector3(selectedNode.position[0], Math.max(1.2, selectedNode.position[1] * 0.45), selectedNode.position[2])
-      : new Vector3(0, 2.2, 0);
+      ? new Vector3(selectedNode.position[0], Math.max(0.9, selectedNode.position[1] * 0.34), selectedNode.position[2])
+      : new Vector3(0, 1.35, 0);
 
     targetVectorRef.current.lerp(desiredTarget, 0.08);
     controls.target.lerp(targetVectorRef.current, 0.12);
@@ -335,13 +335,13 @@ function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
     <OrbitControls
       ref={controlsRef}
       enableDamping
-      dampingFactor={0.08}
-      minDistance={12}
-      maxDistance={58}
-      minPolarAngle={0.5}
-      maxPolarAngle={1.48}
-      rotateSpeed={0.72}
-      zoomSpeed={0.68}
+      dampingFactor={0.09}
+      minDistance={8}
+      maxDistance={36}
+      minPolarAngle={0.62}
+      maxPolarAngle={1.34}
+      rotateSpeed={0.68}
+      zoomSpeed={0.74}
     />
   );
 }

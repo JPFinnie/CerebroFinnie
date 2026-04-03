@@ -20,7 +20,7 @@ export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): 
         : buildDistributedLayout(graph);
 
   const radius = Math.max(
-    18,
+    10,
     ...notes.map((note) => {
       const point = flatPoints.get(note.id);
       if (!point) {
@@ -33,11 +33,11 @@ export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): 
 
   const nodes: LayoutNode[] = notes.map((note) => {
     const point = flatPoints.get(note.id) ?? { x: 0, z: 0 };
-    const scale = 0.34 + Math.pow(note.importance / maxImportance, 1.08) * 0.9;
+    const scale = 0.22 + Math.pow(note.importance / maxImportance, 1.04) * 0.55;
     const y =
-      0.9 +
-      Math.pow(note.importance / maxImportance, 1.15) * 7.4 +
-      Math.min(note.incomingCount * 0.05, 1.5);
+      0.55 +
+      Math.pow(note.importance / maxImportance, 1.1) * 4.2 +
+      Math.min(note.incomingCount * 0.03, 0.95);
 
     return {
       ...note,
@@ -82,12 +82,12 @@ function buildCentralizedLayout(graph: VaultGraph, hubNoteId: string | null) {
   }
 
   for (const [distance, notes] of Array.from(buckets.entries()).sort((left, right) => left[0] - right[0])) {
-    const radius = 6.5 + distance * 4.2;
+    const radius = 4.4 + distance * 2.6;
     notes.sort((left, right) => right.importance - left.importance || left.title.localeCompare(right.title));
 
     notes.forEach((note, index) => {
       const angle = (index / notes.length) * TAU + seeded(note.id, 'central-angle') * 0.85;
-      const wobble = seeded(note.id, 'central-radius') * 1.8;
+      const wobble = seeded(note.id, 'central-radius') * 1.05;
 
       positions.set(note.id, {
         x: Math.cos(angle) * (radius + wobble),
@@ -105,7 +105,7 @@ function buildClusteredLayout(graph: VaultGraph) {
     (left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]),
   );
 
-  const hubRadius = Math.max(12, groupedNotes.length * 2.6);
+  const hubRadius = Math.max(8, groupedNotes.length * 1.55);
 
   groupedNotes.forEach(([group, notes], groupIndex) => {
     const groupAngle = groupedNotes.length === 1 ? 0 : (groupIndex / groupedNotes.length) * TAU + Math.PI / 14;
@@ -114,7 +114,7 @@ function buildClusteredLayout(graph: VaultGraph) {
         ? { x: 0, z: 0 }
         : {
             x: Math.cos(groupAngle) * hubRadius,
-            z: Math.sin(groupAngle) * hubRadius * 0.82,
+            z: Math.sin(groupAngle) * hubRadius * 0.72,
           };
 
     const sortedNotes = [...notes].sort(
@@ -130,7 +130,7 @@ function buildClusteredLayout(graph: VaultGraph) {
       const arm = Math.ceil(noteIndex / 3);
       const localAngle =
         noteIndex * 1.47 + groupIndex * 0.8 + seeded(`${group}:${note.id}`, 'cluster-angle') * Math.PI;
-      const localRadius = 2.6 + Math.sqrt(arm) * 2.35 + seeded(note.id, 'cluster-radius') * 1.4;
+      const localRadius = 1.8 + Math.sqrt(arm) * 1.55 + seeded(note.id, 'cluster-radius') * 0.9;
 
       positions.set(note.id, {
         x: clusterCenter.x + Math.cos(localAngle) * localRadius,
@@ -147,7 +147,7 @@ function buildDistributedLayout(graph: VaultGraph) {
   const indexMap = new Map(notes.map((note, index) => [note.id, index]));
   const positions = notes.map((note, index) => {
     const angle = seeded(note.id, `distributed-angle-${index}`) * TAU;
-    const radius = 5 + seeded(note.id, `distributed-radius-${index}`) * 16;
+    const radius = 3.5 + seeded(note.id, `distributed-radius-${index}`) * 11;
 
     return {
       x: Math.cos(angle) * radius,
@@ -179,7 +179,7 @@ function buildDistributedLayout(graph: VaultGraph) {
         const dz = a.z - b.z;
         const distanceSquared = dx * dx + dz * dz + 0.22;
         const distance = Math.sqrt(distanceSquared);
-        const repel = 6.4 / distanceSquared;
+        const repel = 4.6 / distanceSquared;
         const nx = dx / distance;
         const nz = dz / distance;
 
@@ -196,7 +196,7 @@ function buildDistributedLayout(graph: VaultGraph) {
       const dx = target.x - source.x;
       const dz = target.z - source.z;
       const distance = Math.sqrt(dx * dx + dz * dz) + 0.001;
-      const spring = (distance - 5.4) * 0.017;
+      const spring = (distance - 4.1) * 0.02;
       const nx = dx / distance;
       const nz = dz / distance;
 
@@ -207,17 +207,17 @@ function buildDistributedLayout(graph: VaultGraph) {
     }
 
     for (const point of positions) {
-      point.vx += -point.x * 0.0052;
-      point.vz += -point.z * 0.0052;
-      point.vx *= 0.74;
-      point.vz *= 0.74;
+      point.vx += -point.x * 0.0065;
+      point.vz += -point.z * 0.0065;
+      point.vx *= 0.78;
+      point.vz *= 0.78;
       point.x += point.vx;
       point.z += point.vz;
     }
   }
 
   const furthest = Math.max(...positions.map((point) => Math.hypot(point.x, point.z)), 1);
-  const scale = 24 / furthest;
+  const scale = 15 / furthest;
 
   return new Map(
     notes.map((note, index) => [

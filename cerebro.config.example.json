@@ -1,12 +1,6 @@
 {
-  "vaultPath": "..",
-  "excludeDirectories": [
-    "viewer",
-    "CerebroFinnie",
-    ".codex",
-    "tools"
-  ],
+  "vaultPath": "../../CerebroAtlas",
   "excludeFiles": [
-    "CLAUDE.md"
+    "03-Snapshots.md"
   ]
 }
