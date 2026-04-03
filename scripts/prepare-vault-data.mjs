@@ -7,10 +7,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const APP_ROOT = path.resolve(__dirname, '..');
 const SNAPSHOT_PATH = path.join(APP_ROOT, 'public', 'data', 'vault-graph.json');
+const DEFAULT_SUPABASE_BUCKET = 'cerebro-private';
+const DEFAULT_SUPABASE_PATH = 'snapshots/latest/vault-graph.json';
 
 async function main() {
-  if (hasSupabaseRuntimeConfig()) {
-    console.log('Supabase runtime mode detected; skipping build-time snapshot preparation.');
+  const runtimeConfig = getSupabaseRuntimeConfig();
+  if (runtimeConfig.clientRuntime || runtimeConfig.serverRuntime) {
+    console.log(
+      `Supabase runtime mode detected (client=${runtimeConfig.clientRuntime}, server=${runtimeConfig.serverRuntime}); skipping build-time snapshot preparation.`,
+    );
     return;
   }
 
@@ -49,10 +54,18 @@ async function main() {
   );
 }
 
-function hasSupabaseRuntimeConfig() {
+function getSupabaseRuntimeConfig() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
   const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-  return Boolean(supabaseUrl && supabasePublishableKey);
+  const serverSupabaseUrl = process.env.SUPABASE_URL?.trim();
+  const serverSupabaseSecret = process.env.SUPABASE_SECRET_KEY?.trim();
+  const snapshotBucket = process.env.SUPABASE_SNAPSHOT_BUCKET?.trim() || DEFAULT_SUPABASE_BUCKET;
+  const snapshotPath = process.env.SUPABASE_SNAPSHOT_PATH?.trim() || DEFAULT_SUPABASE_PATH;
+
+  return {
+    clientRuntime: Boolean(supabaseUrl && supabasePublishableKey),
+    serverRuntime: Boolean(serverSupabaseUrl && serverSupabaseSecret && snapshotBucket && snapshotPath),
+  };
 }
 
 async function tryRunIngest() {
