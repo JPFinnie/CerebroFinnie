@@ -28,20 +28,29 @@ type GestureRecognizerInstance = {
 type GestureMemory = {
   midpoint: { x: number; y: number } | null;
   separation: number;
-  roll: number;
   lastVideoTime: number;
   lastUiUpdate: number;
 };
 
+type NavigationHand =
+  | {
+      landmarks: HandPoint[];
+      mode: 'gesture' | 'fallback';
+      label: 'Victory' | 'Two-finger pose';
+    }
+  | {
+      landmarks: HandPoint[];
+      mode: 'gesture';
+      label: 'Closed_Fist' | 'Open_Palm';
+    };
+
 const DEFAULT_SIGNAL: HandNavigationSignal = {
   active: false,
-  panX: 0,
-  panZ: 0,
-  tiltDelta: 0,
+  deltaAzimuth: 0,
+  deltaPolar: 0,
   zoomDelta: 0,
   cursor: { x: 0.5, y: 0.5 },
   separation: 0,
-  roll: 0,
 };
 
 const DEFAULT_OVERLAY: HandOverlayState = {
@@ -60,7 +69,6 @@ export function useHandNavigation(): HandNavigationController {
   const gestureMemoryRef = useRef<GestureMemory>({
     midpoint: null,
     separation: 0,
-    roll: 0,
     lastVideoTime: -1,
     lastUiUpdate: 0,
   });
@@ -88,7 +96,6 @@ export function useHandNavigation(): HandNavigationController {
     gestureMemoryRef.current = {
       midpoint: null,
       separation: 0,
-      roll: 0,
       lastVideoTime: -1,
       lastUiUpdate: 0,
     };
@@ -98,81 +105,100 @@ export function useHandNavigation(): HandNavigationController {
     setOverlay(DEFAULT_OVERLAY);
   }, []);
 
-  const updateSignal = useCallback((result: GestureRecognizerResultLike | null, now: number) => {
-    const activeHand = getNavigationHand(result);
+  const updateSignal = useCallback(
+    (result: GestureRecognizerResultLike | null, now: number) => {
+      const activeHand = getNavigationHand(result);
 
-    if (!activeHand) {
-      commandRef.current.active = false;
+      if (!activeHand) {
+        commandRef.current.active = false;
 
-      if (now - gestureMemoryRef.current.lastUiUpdate > 120) {
-        gestureMemoryRef.current.midpoint = null;
-        gestureMemoryRef.current.separation = 0;
-        gestureMemoryRef.current.roll = 0;
-        gestureMemoryRef.current.lastUiUpdate = now;
-        setOverlay({
-          status: isRunning ? 'ready' : 'idle',
-          message: isRunning ? 'Make a Victory sign to pan, tilt, and zoom' : 'Camera offline',
-          cursor: null,
-          separation: 0,
-        });
+        if (now - gestureMemoryRef.current.lastUiUpdate > 120) {
+          gestureMemoryRef.current.midpoint = null;
+          gestureMemoryRef.current.separation = 0;
+          gestureMemoryRef.current.lastUiUpdate = now;
+          setOverlay({
+            status: isRunning ? 'ready' : 'idle',
+            message: isRunning ? 'Victory orbits. Fist zooms in. Palm zooms out.' : 'Camera offline',
+            cursor: null,
+            separation: 0,
+          });
+        }
+
+        return;
       }
 
-      return;
-    }
+      const memory = gestureMemoryRef.current;
 
-    const hand = activeHand.landmarks;
-    const midpoint = {
-      x: 1 - (hand[8].x + hand[12].x) / 2,
-      y: (hand[8].y + hand[12].y) / 2,
-    };
-    const separation = distance(hand[8], hand[12]);
-    const roll = Math.atan2(hand[12].y - hand[8].y, hand[12].x - hand[8].x);
-    const memory = gestureMemoryRef.current;
-    const smoothMidpoint = memory.midpoint
-      ? {
-          x: lerp(memory.midpoint.x, midpoint.x, 0.38),
-          y: lerp(memory.midpoint.y, midpoint.y, 0.38),
+      if (activeHand.label === 'Closed_Fist' || activeHand.label === 'Open_Palm') {
+        commandRef.current.active = true;
+        commandRef.current.deltaAzimuth = 0;
+        commandRef.current.deltaPolar = 0;
+        commandRef.current.zoomDelta = activeHand.label === 'Closed_Fist' ? 0.085 : -0.085;
+        commandRef.current.cursor = { x: 1 - activeHand.landmarks[0].x, y: activeHand.landmarks[0].y };
+        commandRef.current.separation = memory.separation;
+        memory.midpoint = null;
+
+        if (now - memory.lastUiUpdate > 90) {
+          memory.lastUiUpdate = now;
+          setOverlay({
+            status: 'active',
+            message: activeHand.label === 'Closed_Fist' ? 'Gesture live: zoom in' : 'Gesture live: zoom out',
+            cursor: commandRef.current.cursor,
+            separation: memory.separation,
+          });
         }
-      : midpoint;
-    const smoothSeparation = memory.separation ? lerp(memory.separation, separation, 0.38) : separation;
-    const smoothRoll = memory.midpoint ? lerpAngle(memory.roll, roll, 0.34) : roll;
 
-    if (memory.midpoint) {
-      commandRef.current.active = true;
-      commandRef.current.panX = clamp((smoothMidpoint.x - memory.midpoint.x) * 8.8, -0.12, 0.12);
-      commandRef.current.panZ = clamp((smoothMidpoint.y - memory.midpoint.y) * 8.8, -0.12, 0.12);
-      commandRef.current.tiltDelta = clamp(normalizeAngle(smoothRoll - memory.roll) * 1.25, -0.085, 0.085);
-      commandRef.current.zoomDelta = clamp((smoothSeparation - memory.separation) * 24, -0.18, 0.18);
-      commandRef.current.cursor = smoothMidpoint;
-      commandRef.current.separation = smoothSeparation;
-      commandRef.current.roll = smoothRoll;
-    } else {
-      commandRef.current = {
-        ...DEFAULT_SIGNAL,
-        active: false,
-        cursor: smoothMidpoint,
-        separation: smoothSeparation,
-        roll: smoothRoll,
+        return;
+      }
+
+      const hand = activeHand.landmarks;
+      const midpoint = {
+        x: 1 - (hand[8].x + hand[12].x) / 2,
+        y: (hand[8].y + hand[12].y) / 2,
       };
-    }
+      const separation = distance(hand[8], hand[12]);
+      const smoothMidpoint = memory.midpoint
+        ? {
+            x: lerp(memory.midpoint.x, midpoint.x, 0.38),
+            y: lerp(memory.midpoint.y, midpoint.y, 0.38),
+          }
+        : midpoint;
+      const smoothSeparation = memory.separation ? lerp(memory.separation, separation, 0.38) : separation;
 
-    memory.midpoint = smoothMidpoint;
-    memory.separation = smoothSeparation;
-    memory.roll = smoothRoll;
+      if (memory.midpoint) {
+        commandRef.current.active = true;
+        commandRef.current.deltaAzimuth = clamp((smoothMidpoint.x - memory.midpoint.x) * 2.8, -0.12, 0.12);
+        commandRef.current.deltaPolar = clamp((smoothMidpoint.y - memory.midpoint.y) * 2.3, -0.09, 0.09);
+        commandRef.current.zoomDelta = clamp((smoothSeparation - memory.separation) * 24, -0.18, 0.18);
+        commandRef.current.cursor = smoothMidpoint;
+        commandRef.current.separation = smoothSeparation;
+      } else {
+        commandRef.current = {
+          ...DEFAULT_SIGNAL,
+          active: false,
+          cursor: smoothMidpoint,
+          separation: smoothSeparation,
+        };
+      }
 
-    if (now - memory.lastUiUpdate > 90) {
-      memory.lastUiUpdate = now;
-      setOverlay({
-        status: 'active',
-        message:
-          activeHand.mode === 'gesture'
-            ? `Gesture live: ${activeHand.label} pan/tilt/zoom`
-            : 'Gesture live: two-finger fallback pan/tilt/zoom',
-        cursor: smoothMidpoint,
-        separation: smoothSeparation,
-      });
-    }
-  }, [isRunning]);
+      memory.midpoint = smoothMidpoint;
+      memory.separation = smoothSeparation;
+
+      if (now - memory.lastUiUpdate > 90) {
+        memory.lastUiUpdate = now;
+        setOverlay({
+          status: 'active',
+          message:
+            activeHand.mode === 'gesture'
+              ? `Gesture live: ${activeHand.label} orbit/zoom`
+              : 'Gesture live: two-finger fallback orbit/zoom',
+          cursor: smoothMidpoint,
+          separation: smoothSeparation,
+        });
+      }
+    },
+    [isRunning],
+  );
 
   const start = useCallback(async () => {
     if (isRunning) {
@@ -221,7 +247,7 @@ export function useHandNavigation(): HandNavigationController {
         minHandPresenceConfidence: 0.65,
         minTrackingConfidence: 0.55,
         cannedGesturesClassifierOptions: {
-          categoryAllowlist: ['Victory'],
+          categoryAllowlist: ['Victory', 'Closed_Fist', 'Open_Palm'],
           scoreThreshold: 0.4,
           maxResults: 1,
         },
@@ -243,7 +269,6 @@ export function useHandNavigation(): HandNavigationController {
       gestureMemoryRef.current = {
         midpoint: null,
         separation: 0,
-        roll: 0,
         lastVideoTime: -1,
         lastUiUpdate: 0,
       };
@@ -251,7 +276,7 @@ export function useHandNavigation(): HandNavigationController {
       setIsRunning(true);
       setOverlay({
         status: 'ready',
-        message: 'Make a Victory sign to pan, tilt, and zoom',
+        message: 'Victory orbits. Fist zooms in. Palm zooms out.',
         cursor: null,
         separation: 0,
       });
@@ -300,7 +325,7 @@ export function useHandNavigation(): HandNavigationController {
   };
 }
 
-function getNavigationHand(result: GestureRecognizerResultLike | null) {
+function getNavigationHand(result: GestureRecognizerResultLike | null): NavigationHand | null {
   if (!result) {
     return null;
   }
@@ -309,12 +334,17 @@ function getNavigationHand(result: GestureRecognizerResultLike | null) {
     const landmarks = result.landmarks[index];
     const topGesture = result.gestures[index]?.[0];
 
-    if (topGesture?.categoryName === 'Victory' && (topGesture.score ?? 0) >= 0.4) {
+    if (
+      (topGesture?.categoryName === 'Victory' ||
+        topGesture?.categoryName === 'Closed_Fist' ||
+        topGesture?.categoryName === 'Open_Palm') &&
+      (topGesture.score ?? 0) >= 0.4
+    ) {
       return {
         landmarks,
-        mode: 'gesture' as const,
+        mode: 'gesture',
         label: topGesture.categoryName,
-      };
+      } as NavigationHand;
     }
   }
 
@@ -322,7 +352,7 @@ function getNavigationHand(result: GestureRecognizerResultLike | null) {
     if (isTwoFingerPose(landmarks)) {
       return {
         landmarks,
-        mode: 'fallback' as const,
+        mode: 'fallback',
         label: 'Two-finger pose',
       };
     }
@@ -354,12 +384,4 @@ function clamp(value: number, min: number, max: number) {
 
 function lerp(start: number, end: number, amount: number) {
   return start + (end - start) * amount;
-}
-
-function normalizeAngle(value: number) {
-  return Math.atan2(Math.sin(value), Math.cos(value));
-}
-
-function lerpAngle(start: number, end: number, amount: number) {
-  return start + normalizeAngle(end - start) * amount;
 }

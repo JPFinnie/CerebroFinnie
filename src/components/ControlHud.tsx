@@ -200,8 +200,7 @@ export function ControlHud({
         </div>
 
         <p className="support-copy camera-tip">
-          Use a single-hand Victory sign. Drift the hand to pan across the terrain, rotate the wrist to tilt, and
-          widen or narrow finger spacing to zoom.
+          Victory orbits and finger spacing zooms. Closed fist keeps dollying in. Open palm keeps dollying out.
         </p>
       </section>
     </section>

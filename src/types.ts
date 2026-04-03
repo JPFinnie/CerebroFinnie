@@ -60,13 +60,11 @@ export interface LayoutResult {
 
 export interface HandNavigationSignal {
   active: boolean;
-  panX: number;
-  panZ: number;
-  tiltDelta: number;
+  deltaAzimuth: number;
+  deltaPolar: number;
   zoomDelta: number;
   cursor: { x: number; y: number };
   separation: number;
-  roll: number;
 }
 
 export type HandStatus = 'idle' | 'loading' | 'ready' | 'active' | 'error';

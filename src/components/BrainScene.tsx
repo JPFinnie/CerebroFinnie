@@ -295,7 +295,6 @@ type CameraRigProps = {
 function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const targetVectorRef = useRef(new Vector3(0, 2, 0));
-  const panOffsetRef = useRef(new Vector3(0, 0, 0));
 
   useFrame(() => {
     const controls = controlsRef.current;
@@ -304,38 +303,16 @@ function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
     }
 
     const desiredTarget = selectedNode
-      ? new Vector3(selectedNode.position[0], Math.max(1.2, selectedNode.position[1] * 0.45), selectedNode.position[2]).add(
-          panOffsetRef.current,
-        )
-      : new Vector3(0, 2.2, 0).add(panOffsetRef.current);
+      ? new Vector3(selectedNode.position[0], Math.max(1.2, selectedNode.position[1] * 0.45), selectedNode.position[2])
+      : new Vector3(0, 2.2, 0);
 
     targetVectorRef.current.lerp(desiredTarget, 0.08);
     controls.target.lerp(targetVectorRef.current, 0.12);
 
     const signal = handSignalRef.current;
     if (signal.active) {
-      const camera = controls.object;
-      const distance = camera.position.distanceTo(controls.target);
-      const forward = new Vector3().subVectors(controls.target, camera.position);
-      forward.y = 0;
-
-      if (forward.lengthSq() < 0.0001) {
-        forward.set(0, 0, -1);
-      } else {
-        forward.normalize();
-      }
-
-      const right = new Vector3().crossVectors(new Vector3(0, 1, 0), forward).normalize();
-      const panDelta = new Vector3()
-        .addScaledVector(right, -signal.panX * Math.max(0.45, distance * 0.06))
-        .addScaledVector(forward, signal.panZ * Math.max(0.45, distance * 0.06));
-
-      panOffsetRef.current.add(panDelta);
-      controls.target.add(panDelta);
-      camera.position.add(panDelta);
-      targetVectorRef.current.add(panDelta);
-
-      controls.setPolarAngle(clamp(signal.tiltDelta + controls.getPolarAngle(), 0.52, 1.45));
+      controls.setAzimuthalAngle(controls.getAzimuthalAngle() - signal.deltaAzimuth);
+      controls.setPolarAngle(clamp(signal.deltaPolar + controls.getPolarAngle(), 0.52, 1.45));
 
       if (Math.abs(signal.zoomDelta) > 0.004) {
         const scale = 1 + Math.min(0.32, Math.abs(signal.zoomDelta) * 3.2);
@@ -346,9 +323,8 @@ function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
         }
       }
 
-      signal.panX *= 0.7;
-      signal.panZ *= 0.7;
-      signal.tiltDelta *= 0.68;
+      signal.deltaAzimuth *= 0.72;
+      signal.deltaPolar *= 0.72;
       signal.zoomDelta *= 0.68;
     }
 
