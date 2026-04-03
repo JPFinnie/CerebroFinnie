@@ -200,8 +200,8 @@ export function ControlHud({
         </div>
 
         <p className="support-copy camera-tip">
-          Use a single-hand Victory sign. Move left/right to orbit, up/down to tilt, and widen or narrow finger
-          spacing to zoom.
+          Use a single-hand Victory sign. Drift the hand to pan across the terrain, rotate the wrist to tilt, and
+          widen or narrow finger spacing to zoom.
         </p>
       </section>
     </section>

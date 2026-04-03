@@ -1,6 +1,12 @@
 {
-  "vaultPath": "C:/Users/james/Desktop/Cerebro",
+  "vaultPath": "..",
   "excludeDirectories": [
-    "viewer"
+    "viewer",
+    "CerebroFinnie",
+    ".codex",
+    "tools"
+  ],
+  "excludeFiles": [
+    "CLAUDE.md"
   ]
 }

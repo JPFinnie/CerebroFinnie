@@ -12,8 +12,15 @@ const DEFAULT_EXCLUDED_DIRECTORIES = [
   '.git',
   '.obsidian',
   '.claude',
+  '.codex',
+  '.next',
+  '.turbo',
+  '.vercel',
   'node_modules',
+  'coverage',
+  'build',
   'dist',
+  'out',
   'viewer',
   path.basename(APP_ROOT),
 ];
@@ -38,8 +45,9 @@ async function main() {
   const config = await readConfig();
   const vaultRoot = await resolveVaultRoot(config);
   const excludedDirectories = buildExcludedDirectories(config);
+  const excludedFiles = buildExcludedFiles(config);
   const obsidianGraphPath = path.join(vaultRoot, '.obsidian', 'graph.json');
-  const files = await collectMarkdownFiles(vaultRoot, excludedDirectories);
+  const files = await collectMarkdownFiles(vaultRoot, vaultRoot, excludedDirectories, excludedFiles);
   const graphSettings = await readGraphSettings(obsidianGraphPath);
   const notes = [];
 
@@ -148,23 +156,28 @@ async function main() {
   console.log(`Generated ${notes.length} notes and ${resolvedEdges.length} links -> ${OUTPUT_PATH}`);
 }
 
-async function collectMarkdownFiles(rootDirectory, excludedDirectories = new Set()) {
+async function collectMarkdownFiles(rootDirectory, vaultRoot, excludedDirectories = new Set(), excludedFiles = new Set()) {
   const entries = await fs.readdir(rootDirectory, { withFileTypes: true });
   const files = [];
 
   for (const entry of entries) {
-    if (excludedDirectories.has(entry.name)) {
-      continue;
-    }
-
     const absolutePath = path.join(rootDirectory, entry.name);
+    const relativePath = normalizePath(path.relative(vaultRoot, absolutePath));
 
     if (entry.isDirectory()) {
-      files.push(...(await collectMarkdownFiles(absolutePath, excludedDirectories)));
+      if (shouldExcludeDirectory(entry.name, relativePath, excludedDirectories)) {
+        continue;
+      }
+
+      files.push(...(await collectMarkdownFiles(absolutePath, vaultRoot, excludedDirectories, excludedFiles)));
       continue;
     }
 
-    if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+    if (
+      entry.isFile() &&
+      entry.name.toLowerCase().endsWith('.md') &&
+      !shouldExcludeFile(entry.name, relativePath, excludedFiles)
+    ) {
       files.push(absolutePath);
     }
   }
@@ -253,6 +266,27 @@ function buildExcludedDirectories(config) {
     : [];
 
   return new Set([...DEFAULT_EXCLUDED_DIRECTORIES, ...configured]);
+}
+
+function buildExcludedFiles(config) {
+  const configured = Array.isArray(config.excludeFiles) ? config.excludeFiles.map((value) => normalizePath(String(value))) : [];
+  return new Set(configured.filter(Boolean));
+}
+
+function shouldExcludeDirectory(entryName, relativePath, excludedDirectories) {
+  if (excludedDirectories.has(entryName) || excludedDirectories.has(relativePath)) {
+    return true;
+  }
+
+  return entryName.startsWith('.') && entryName !== '.obsidian';
+}
+
+function shouldExcludeFile(entryName, relativePath, excludedFiles) {
+  if (excludedFiles.has(entryName) || excludedFiles.has(relativePath)) {
+    return true;
+  }
+
+  return false;
 }
 
 function buildGroupDefinitions(graphSettings) {
