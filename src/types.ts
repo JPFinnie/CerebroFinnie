@@ -64,6 +64,7 @@ export interface HandNavigationSignal {
   deltaAzimuth: number;
   deltaPolar: number;
   zoomDelta: number;
+  panDelta: { x: number; y: number };
   cursor: { x: number; y: number };
   separation: number;
 }
@@ -82,6 +83,8 @@ export interface HandNavigationController {
   commandRef: MutableRefObject<HandNavigationSignal>;
   overlay: HandOverlayState;
   isRunning: boolean;
+  isPaused: boolean;
   start: () => Promise<void>;
   stop: () => void;
+  togglePause: () => void;
 }

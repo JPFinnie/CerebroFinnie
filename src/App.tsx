@@ -3,6 +3,7 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import './App.css';
 import { AuthScreen } from './components/AuthScreen';
 import { BrainScene } from './components/BrainScene';
+import { CameraOverlay } from './components/CameraOverlay';
 import { ControlHud } from './components/ControlHud';
 import { NoteInspector } from './components/NoteInspector';
 import { NoteModal } from './components/NoteModal';
@@ -380,6 +381,7 @@ function App() {
           activeGroup={activeGroup}
           searchMatchIds={searchMatchIds}
           handSignalRef={handNavigation.commandRef}
+          isPaused={handNavigation.isPaused}
           onSelect={handleSelectNote}
         />
       </main>
@@ -397,16 +399,12 @@ function App() {
             searchQuery={searchQuery}
             selectedNoteId={selectedNoteId}
             matchingCount={matchingCount}
-            videoRef={handNavigation.videoRef}
-            handOverlay={handNavigation.overlay}
-            isCameraRunning={handNavigation.isRunning}
             runtimeLabel={runtimeLabel}
             sessionEmail={session?.user.email ?? null}
             onSearchChange={setSearchQuery}
             onTopologyChange={handleTopologyChange}
             onGroupChange={handleGroupChange}
             onSelectNote={handleSelectNote}
-            onToggleCamera={handleToggleCamera}
             onSignOut={isSupabaseRuntimeEnabled ? handleSignOut : undefined}
           />
         </aside>
@@ -420,6 +418,25 @@ function App() {
 
       {selectedNote && isFullNoteOpen ? (
         <NoteModal key={selectedNote.id} note={selectedNote} onClose={handleCloseFullNote} />
+      ) : null}
+
+      <CameraOverlay
+        videoRef={handNavigation.videoRef}
+        handOverlay={handNavigation.overlay}
+        isCameraRunning={handNavigation.isRunning}
+        isPaused={handNavigation.isPaused}
+        onToggle={handleToggleCamera}
+        onTogglePause={handNavigation.togglePause}
+      />
+
+      {handNavigation.isPaused && handNavigation.overlay.cursor ? (
+        <div
+          className="scene-crosshair"
+          style={{
+            left: `${handNavigation.overlay.cursor.x * 100}%`,
+            top: `${handNavigation.overlay.cursor.y * 100}%`,
+          }}
+        />
       ) : null}
     </div>
   );

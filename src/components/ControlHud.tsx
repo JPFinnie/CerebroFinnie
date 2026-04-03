@@ -1,5 +1,5 @@
-import type { ChangeEvent, RefObject } from 'react';
-import type { HandOverlayState, TopologyMode, VaultGroup, VaultNote } from '../types';
+import type { ChangeEvent } from 'react';
+import type { TopologyMode, VaultGroup, VaultNote } from '../types';
 
 type ControlHudProps = {
   topology: TopologyMode;
@@ -12,16 +12,12 @@ type ControlHudProps = {
   searchQuery: string;
   selectedNoteId: string | null;
   matchingCount: number;
-  videoRef: RefObject<HTMLVideoElement | null>;
-  handOverlay: HandOverlayState;
-  isCameraRunning: boolean;
   runtimeLabel?: string;
   sessionEmail?: string | null;
   onSearchChange: (value: string) => void;
   onTopologyChange: (next: TopologyMode) => void;
   onGroupChange: (next: string | null) => void;
   onSelectNote: (noteId: string) => void;
-  onToggleCamera: () => void;
   onSignOut?: () => void;
 };
 
@@ -42,21 +38,14 @@ export function ControlHud({
   searchQuery,
   selectedNoteId,
   matchingCount,
-  videoRef,
-  handOverlay,
-  isCameraRunning,
   runtimeLabel,
   sessionEmail,
   onSearchChange,
   onTopologyChange,
   onGroupChange,
   onSelectNote,
-  onToggleCamera,
   onSignOut,
 }: ControlHudProps) {
-  const shouldShowCameraPreview =
-    isCameraRunning || handOverlay.status === 'loading' || handOverlay.status === 'active' || handOverlay.status === 'error';
-
   return (
     <section className="control-shell">
       <div className="brand-block">
@@ -170,46 +159,6 @@ export function ControlHud({
             </button>
           ))}
         </div>
-      </section>
-
-      <section className="camera-shell">
-        <div className="camera-header">
-          <div>
-            <p className="mini-label">Hand navigation</p>
-            <p className="support-copy">{handOverlay.message}</p>
-          </div>
-          <button type="button" className="camera-button" onClick={onToggleCamera}>
-            {isCameraRunning ? 'Stop camera' : 'Start camera'}
-          </button>
-        </div>
-
-        {shouldShowCameraPreview ? (
-          <div className={isCameraRunning ? 'camera-preview live' : 'camera-preview'}>
-            <video ref={videoRef} autoPlay muted playsInline />
-            {handOverlay.cursor ? (
-              <span
-                className="gesture-cursor"
-                style={{
-                  left: `${handOverlay.cursor.x * 100}%`,
-                  top: `${handOverlay.cursor.y * 100}%`,
-                }}
-              />
-            ) : null}
-            <div className="camera-status">
-              <span className={`status-dot ${handOverlay.status}`} />
-              <span>{handOverlay.status}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="camera-idle-card">
-            <span className={`status-dot ${handOverlay.status}`} />
-            <span>Camera off. Start it when you want gesture control.</span>
-          </div>
-        )}
-
-        <p className="support-copy camera-tip">
-          Victory orbits and finger spacing zooms. Closed fist keeps dollying in. Open palm keeps dollying out.
-        </p>
       </section>
     </section>
   );

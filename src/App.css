@@ -540,6 +540,78 @@
   font-size: 0.84rem;
 }
 
+/* Floating camera overlay — always on top, bottom-left corner */
+.camera-overlay {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  z-index: 28;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 11rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(255, 243, 222, 0.14);
+  border-radius: 1rem;
+  background: rgba(5, 13, 19, 0.82);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.32);
+}
+
+.camera-overlay.idle {
+  width: auto;
+}
+
+.camera-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pause-badge {
+  margin-left: auto;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  background: rgba(255, 209, 139, 0.18);
+  border: 1px solid rgba(255, 209, 139, 0.42);
+  color: #ffd08b;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.camera-overlay-actions {
+  display: flex;
+  gap: 0.38rem;
+}
+
+.camera-overlay-actions .camera-button {
+  flex: 1;
+  font-size: 0.78rem;
+  padding: 0.42rem 0.5rem;
+}
+
+/* Scene crosshair for gesture dwell-select */
+.scene-crosshair {
+  position: fixed;
+  z-index: 14;
+  width: 2.2rem;
+  height: 2.2rem;
+  margin-left: -1.1rem;
+  margin-top: -1.1rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 209, 139, 0.9);
+  box-shadow: 0 0 0 0.4rem rgba(255, 209, 139, 0.12);
+  pointer-events: none;
+  animation: scene-crosshair-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes scene-crosshair-pulse {
+  0%, 100% { box-shadow: 0 0 0 0.3rem rgba(255, 209, 139, 0.18); }
+  50% { box-shadow: 0 0 0 0.9rem rgba(255, 209, 139, 0.06); }
+}
+
 .scene-shell,
 .scene-shell canvas {
   width: 100%;
