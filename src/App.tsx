@@ -23,6 +23,8 @@ function App() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [isFullNoteOpen, setIsFullNoteOpen] = useState(false);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
+  const [isInspectorPanelOpen, setIsInspectorPanelOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(!isSupabaseRuntimeEnabled);
   const [isGraphLoading, setIsGraphLoading] = useState(true);
@@ -198,6 +200,7 @@ function App() {
   function handleSelectNote(noteId: string) {
     startTransition(() => {
       setSelectedNoteId(noteId);
+      setIsInspectorPanelOpen(true);
     });
   }
 
@@ -311,32 +314,6 @@ function App() {
     <div className="app-shell">
       <div className="page-atmosphere" />
 
-      <aside className="panel left-panel">
-        <ControlHud
-          topology={topology}
-          activeGroup={activeGroup}
-          groups={graph.groups}
-          notes={matchingNotes}
-          noteCount={graph.noteCount}
-          edgeCount={graph.edgeCount}
-          generatedAt={graph.generatedAt}
-          searchQuery={searchQuery}
-          selectedNoteId={selectedNoteId}
-          matchingCount={matchingCount}
-          videoRef={handNavigation.videoRef}
-          handOverlay={handNavigation.overlay}
-          isCameraRunning={handNavigation.isRunning}
-          runtimeLabel={runtimeLabel}
-          sessionEmail={session?.user.email ?? null}
-          onSearchChange={setSearchQuery}
-          onTopologyChange={handleTopologyChange}
-          onGroupChange={handleGroupChange}
-          onSelectNote={handleSelectNote}
-          onToggleCamera={handleToggleCamera}
-          onSignOut={isSupabaseRuntimeEnabled ? handleSignOut : undefined}
-        />
-      </aside>
-
       <main className="scene-panel">
         <BrainScene
           graph={graph}
@@ -349,9 +326,56 @@ function App() {
         />
       </main>
 
-      <aside className="panel right-panel">
-        <NoteInspector note={selectedNote} onOpenNote={handleOpenFullNote} />
-      </aside>
+      <div className="panel-toggle-bar">
+        <button
+          type="button"
+          className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+          onClick={() => setIsControlPanelOpen((current) => !current)}
+        >
+          {isControlPanelOpen ? 'Hide Controls' : 'Show Controls'}
+        </button>
+        <button
+          type="button"
+          className={isInspectorPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+          onClick={() => setIsInspectorPanelOpen((current) => !current)}
+        >
+          {isInspectorPanelOpen ? 'Hide Note' : 'Show Note'}
+        </button>
+      </div>
+
+      {isControlPanelOpen ? (
+        <aside className="panel left-panel overlay-panel">
+          <ControlHud
+            topology={topology}
+            activeGroup={activeGroup}
+            groups={graph.groups}
+            notes={matchingNotes}
+            noteCount={graph.noteCount}
+            edgeCount={graph.edgeCount}
+            generatedAt={graph.generatedAt}
+            searchQuery={searchQuery}
+            selectedNoteId={selectedNoteId}
+            matchingCount={matchingCount}
+            videoRef={handNavigation.videoRef}
+            handOverlay={handNavigation.overlay}
+            isCameraRunning={handNavigation.isRunning}
+            runtimeLabel={runtimeLabel}
+            sessionEmail={session?.user.email ?? null}
+            onSearchChange={setSearchQuery}
+            onTopologyChange={handleTopologyChange}
+            onGroupChange={handleGroupChange}
+            onSelectNote={handleSelectNote}
+            onToggleCamera={handleToggleCamera}
+            onSignOut={isSupabaseRuntimeEnabled ? handleSignOut : undefined}
+          />
+        </aside>
+      ) : null}
+
+      {isInspectorPanelOpen ? (
+        <aside className="panel right-panel overlay-panel">
+          <NoteInspector note={selectedNote} onOpenNote={handleOpenFullNote} />
+        </aside>
+      ) : null}
 
       {selectedNote && isFullNoteOpen ? (
         <NoteModal key={selectedNote.id} note={selectedNote} onClose={handleCloseFullNote} />
@@ -371,7 +395,7 @@ function applyGraph(
       return current;
     }
 
-    return payload.notes[0]?.id ?? null;
+    return null;
   });
 }
 

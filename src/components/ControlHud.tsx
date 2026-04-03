@@ -54,14 +54,15 @@ export function ControlHud({
   onToggleCamera,
   onSignOut,
 }: ControlHudProps) {
+  const shouldShowCameraPreview =
+    isCameraRunning || handOverlay.status === 'loading' || handOverlay.status === 'active' || handOverlay.status === 'error';
+
   return (
     <section className="control-shell">
       <div className="brand-block">
         <p className="eyebrow">Cerebro Atlas</p>
-        <h1>Topographical viewer for your Obsidian brain.</h1>
-        <p className="lede">
-          A local terrain renderer over your actual vault graph, with camera hand tracking layered on top.
-        </p>
+        <h1>Desktop map of your Obsidian brain.</h1>
+        <p className="lede">Scene-first atlas view with private snapshot access and camera gestures layered on top.</p>
       </div>
 
       {sessionEmail ? (
@@ -130,7 +131,7 @@ export function ControlHud({
           {searchQuery ? `${matchingCount} matches in the current vault.` : 'Search by title, path, tag, or excerpt.'}
         </p>
         <div className="search-results">
-          {notes.slice(0, 10).map((note) => (
+          {notes.slice(0, 6).map((note) => (
             <button
               key={note.id}
               type="button"
@@ -182,22 +183,29 @@ export function ControlHud({
           </button>
         </div>
 
-        <div className={isCameraRunning ? 'camera-preview live' : 'camera-preview'}>
-          <video ref={videoRef} autoPlay muted playsInline />
-          {handOverlay.cursor ? (
-            <span
-              className="gesture-cursor"
-              style={{
-                left: `${handOverlay.cursor.x * 100}%`,
-                top: `${handOverlay.cursor.y * 100}%`,
-              }}
-            />
-          ) : null}
-          <div className="camera-status">
-            <span className={`status-dot ${handOverlay.status}`} />
-            <span>{handOverlay.status}</span>
+        {shouldShowCameraPreview ? (
+          <div className={isCameraRunning ? 'camera-preview live' : 'camera-preview'}>
+            <video ref={videoRef} autoPlay muted playsInline />
+            {handOverlay.cursor ? (
+              <span
+                className="gesture-cursor"
+                style={{
+                  left: `${handOverlay.cursor.x * 100}%`,
+                  top: `${handOverlay.cursor.y * 100}%`,
+                }}
+              />
+            ) : null}
+            <div className="camera-status">
+              <span className={`status-dot ${handOverlay.status}`} />
+              <span>{handOverlay.status}</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="camera-idle-card">
+            <span className={`status-dot ${handOverlay.status}`} />
+            <span>Camera off. Start it when you want gesture control.</span>
+          </div>
+        )}
 
         <p className="support-copy camera-tip">
           Victory orbits and finger spacing zooms. Closed fist keeps dollying in. Open palm keeps dollying out.

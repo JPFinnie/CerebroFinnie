@@ -9,15 +9,27 @@ type FlatPoint = {
 
 export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): LayoutResult {
   const notes = graph.notes;
+  if (notes.length === 0) {
+    return {
+      nodes: [],
+      nodeMap: new Map(),
+      radius: 10,
+      hubNoteId: null,
+      center: [0, 0, 0],
+    };
+  }
+
   const maxImportance = Math.max(...notes.map((note) => note.importance), 1);
   const hubNoteId = notes[0]?.id ?? null;
 
-  const flatPoints =
+  const rawFlatPoints =
     topology === 'centralized'
       ? buildCentralizedLayout(graph, hubNoteId)
       : topology === 'clustered'
         ? buildClusteredLayout(graph)
         : buildDistributedLayout(graph);
+
+  const flatPoints = normalizeFlatPoints(rawFlatPoints, getTargetRadius(topology));
 
   const radius = Math.max(
     10,
@@ -33,11 +45,11 @@ export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): 
 
   const nodes: LayoutNode[] = notes.map((note) => {
     const point = flatPoints.get(note.id) ?? { x: 0, z: 0 };
-    const scale = 0.22 + Math.pow(note.importance / maxImportance, 1.04) * 0.55;
+    const scale = 0.28 + Math.pow(note.importance / maxImportance, 1.03) * 0.68;
     const y =
-      0.55 +
-      Math.pow(note.importance / maxImportance, 1.1) * 4.2 +
-      Math.min(note.incomingCount * 0.03, 0.95);
+      0.45 +
+      Math.pow(note.importance / maxImportance, 1.08) * 3.15 +
+      Math.min(note.incomingCount * 0.022, 0.7);
 
     return {
       ...note,
@@ -51,6 +63,7 @@ export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): 
     nodeMap: new Map(nodes.map((node) => [node.id, node])),
     radius,
     hubNoteId,
+    center: [0, 0, 0],
   };
 }
 
@@ -105,7 +118,7 @@ function buildClusteredLayout(graph: VaultGraph) {
     (left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]),
   );
 
-  const hubRadius = Math.max(8, groupedNotes.length * 1.55);
+  const hubRadius = Math.max(5.5, groupedNotes.length * 1.08);
 
   groupedNotes.forEach(([group, notes], groupIndex) => {
     const groupAngle = groupedNotes.length === 1 ? 0 : (groupIndex / groupedNotes.length) * TAU + Math.PI / 14;
@@ -130,7 +143,7 @@ function buildClusteredLayout(graph: VaultGraph) {
       const arm = Math.ceil(noteIndex / 3);
       const localAngle =
         noteIndex * 1.47 + groupIndex * 0.8 + seeded(`${group}:${note.id}`, 'cluster-angle') * Math.PI;
-      const localRadius = 1.8 + Math.sqrt(arm) * 1.55 + seeded(note.id, 'cluster-radius') * 0.9;
+      const localRadius = 2.3 + Math.sqrt(arm) * 1.95 + seeded(note.id, 'cluster-radius') * 1.2;
 
       positions.set(note.id, {
         x: clusterCenter.x + Math.cos(localAngle) * localRadius,
@@ -225,6 +238,57 @@ function buildDistributedLayout(graph: VaultGraph) {
       {
         x: positions[index].x * scale,
         z: positions[index].z * scale,
+      },
+    ]),
+  );
+}
+
+function getTargetRadius(topology: TopologyMode) {
+  switch (topology) {
+    case 'centralized':
+      return 13;
+    case 'clustered':
+      return 16;
+    case 'distributed':
+      return 14;
+    default:
+      return 15;
+  }
+}
+
+function normalizeFlatPoints(points: Map<string, FlatPoint>, targetRadius: number) {
+  if (points.size === 0) {
+    return new Map<string, FlatPoint>();
+  }
+
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+
+  for (const point of points.values()) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minZ = Math.min(minZ, point.z);
+    maxZ = Math.max(maxZ, point.z);
+  }
+
+  const centerX = (minX + maxX) * 0.5;
+  const centerZ = (minZ + maxZ) * 0.5;
+
+  let furthest = 0;
+  for (const point of points.values()) {
+    furthest = Math.max(furthest, Math.hypot(point.x - centerX, point.z - centerZ));
+  }
+
+  const scale = furthest > 0 ? targetRadius / furthest : 1;
+
+  return new Map(
+    Array.from(points.entries(), ([id, point]) => [
+      id,
+      {
+        x: (point.x - centerX) * scale,
+        z: (point.z - centerZ) * scale,
       },
     ]),
   );

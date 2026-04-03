@@ -1,6 +1,6 @@
 import { Html, OrbitControls, Sparkles, useCursor } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BufferAttribute, Color, PlaneGeometry, Vector3, WireframeGeometry } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { buildTopologyLayout } from '../lib/layouts';
@@ -26,23 +26,22 @@ export function BrainScene({
   onSelect,
 }: BrainSceneProps) {
   const layout = useMemo(() => buildTopologyLayout(graph, topology), [graph, topology]);
-  const selectedNode = selectedNoteId ? layout.nodeMap.get(selectedNoteId) ?? null : null;
 
   return (
     <div className="scene-shell">
-      <Canvas camera={{ position: [0, 24, 22], fov: 38 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
-        <fog attach="fog" args={['#06131b', 12, 46]} />
-        <ambientLight intensity={0.82} />
-        <directionalLight position={[18, 22, 12]} intensity={1.35} color="#f0d7ae" />
-        <directionalLight position={[-12, 10, -18]} intensity={0.8} color="#80c2dd" />
-        <pointLight position={[0, 24, 0]} intensity={0.55} color="#ffb46c" />
-        <Sparkles count={42} scale={[42, 18, 42]} size={1.45} speed={0.08} opacity={0.14} color="#ffe7c9" />
+      <Canvas camera={{ position: [0, 13, 17], fov: 44 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
+        <fog attach="fog" args={['#07151d', 14, 38]} />
+        <ambientLight intensity={0.92} />
+        <directionalLight position={[18, 22, 12]} intensity={1.45} color="#f0d7ae" />
+        <directionalLight position={[-12, 10, -18]} intensity={0.9} color="#80c2dd" />
+        <pointLight position={[0, 18, 0]} intensity={0.42} color="#ffb46c" />
+        <Sparkles count={20} scale={[34, 14, 34]} size={1.35} speed={0.08} opacity={0.1} color="#ffe7c9" />
 
         <SceneCore
           layout={layout}
           graph={graph}
+          topology={topology}
           selectedNoteId={selectedNoteId}
-          selectedNode={selectedNode}
           activeGroup={activeGroup}
           searchMatchIds={searchMatchIds}
           handSignalRef={handSignalRef}
@@ -56,8 +55,8 @@ export function BrainScene({
 type SceneCoreProps = {
   layout: ReturnType<typeof buildTopologyLayout>;
   graph: VaultGraph;
+  topology: TopologyMode;
   selectedNoteId: string | null;
-  selectedNode: LayoutNode | null;
   activeGroup: string | null;
   searchMatchIds: Set<string> | null;
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
@@ -67,16 +66,16 @@ type SceneCoreProps = {
 function SceneCore({
   layout,
   graph,
+  topology,
   selectedNoteId,
-  selectedNode,
   activeGroup,
   searchMatchIds,
   handSignalRef,
   onSelect,
 }: SceneCoreProps) {
   const terrainGeometry = useMemo(() => {
-    const extent = Math.max(28, layout.radius * 2.05);
-    const geometry = new PlaneGeometry(extent, extent, 54, 54);
+    const extent = Math.max(24, layout.radius * 2.05);
+    const geometry = new PlaneGeometry(extent, extent, 40, 40);
     geometry.rotateX(-Math.PI / 2);
 
     const position = geometry.getAttribute('position') as BufferAttribute;
@@ -90,9 +89,9 @@ function SceneCore({
         const dx = x - node.position[0];
         const dz = z - node.position[2];
         const distanceSquared = dx * dx + dz * dz;
-        const spread = 18 + node.scale * 20;
+        const spread = 12 + node.scale * 16;
         const influence = Math.exp(-distanceSquared / spread);
-        height += influence * (node.position[1] * 0.22 + node.scale * 0.6);
+        height += influence * (node.position[1] * 0.18 + node.scale * 0.45);
       }
 
       position.setY(index, height);
@@ -180,20 +179,57 @@ function SceneCore({
     return new Float32Array(values);
   }, [graph.edges, layout.nodeMap, selectedNoteId]);
 
+  const labelNodeIds = useMemo(() => {
+    const visibleNodes = layout.nodes.filter((node) => visibleIds.has(node.id));
+
+    if (topology === 'clustered') {
+      const labelIds = new Set<string>();
+      const notesByGroup = new Map<string, LayoutNode[]>();
+
+      for (const node of visibleNodes) {
+        const existing = notesByGroup.get(node.group);
+        if (existing) {
+          existing.push(node);
+          continue;
+        }
+
+        notesByGroup.set(node.group, [node]);
+      }
+
+      for (const nodes of notesByGroup.values()) {
+        nodes.sort((left, right) => right.importance - left.importance || left.title.localeCompare(right.title));
+        if (nodes[0]) {
+          labelIds.add(nodes[0].id);
+        }
+      }
+
+      return labelIds;
+    }
+
+    return new Set(
+      [...visibleNodes]
+        .sort((left, right) => right.importance - left.importance || left.title.localeCompare(right.title))
+        .slice(0, 9)
+        .map((node) => node.id),
+    );
+  }, [layout.nodes, topology, visibleIds]);
+
+  const selectedNode = selectedNoteId ? layout.nodeMap.get(selectedNoteId) ?? null : null;
+
   return (
     <>
-      <group position={[0, -0.35, 0]}>
+      <group position={[0, -0.55, 0]}>
         <mesh geometry={terrainGeometry} receiveShadow>
           <meshStandardMaterial
             color={new Color('#0c2a35')}
-            metalness={0.08}
-            roughness={0.82}
+            metalness={0.04}
+            roughness={0.92}
             transparent
-            opacity={0.92}
+            opacity={0.68}
           />
         </mesh>
         <lineSegments geometry={terrainWireframe}>
-          <lineBasicMaterial color="#7db5c5" transparent opacity={0.12} />
+          <lineBasicMaterial color="#7db5c5" transparent opacity={0.07} />
         </lineSegments>
       </group>
 
@@ -202,7 +238,7 @@ function SceneCore({
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[allEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#77b8cf" transparent opacity={0.08} />
+          <lineBasicMaterial color="#77b8cf" transparent opacity={0.12} />
         </lineSegments>
       ) : null}
 
@@ -211,7 +247,7 @@ function SceneCore({
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[selectedEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#ffd08b" transparent opacity={0.44} />
+          <lineBasicMaterial color="#ffd08b" transparent opacity={0.58} />
         </lineSegments>
       ) : null}
 
@@ -226,12 +262,32 @@ function SceneCore({
         />
       ))}
 
+      {layout.nodes.map((node) => {
+        if (node.id === selectedNoteId || !labelNodeIds.has(node.id) || !visibleIds.has(node.id)) {
+          return null;
+        }
+
+        return (
+          <Html
+            key={`label-${node.id}`}
+            position={[node.position[0], node.position[1] + node.scale + 0.62, node.position[2]]}
+            center
+            className="node-label"
+            distanceFactor={20}
+          >
+            <div className="node-label-card minor">
+              <span>{node.title}</span>
+            </div>
+          </Html>
+        );
+      })}
+
       {selectedNode ? (
         <Html
           position={[selectedNode.position[0], selectedNode.position[1] + selectedNode.scale + 0.9, selectedNode.position[2]]}
           center
           className="node-label"
-          distanceFactor={18}
+          distanceFactor={20}
         >
           <div className="node-label-card">
             <span>{selectedNode.title}</span>
@@ -240,7 +296,7 @@ function SceneCore({
         </Html>
       ) : null}
 
-      <CameraRig handSignalRef={handSignalRef} selectedNode={selectedNode} />
+      <CameraRig handSignalRef={handSignalRef} layout={layout} />
     </>
   );
 }
@@ -262,9 +318,17 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
 
   return (
     <group position={node.position}>
-      <mesh scale={[radius * 2.8, radius * 0.12, radius * 2.8]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh scale={[radius * 3.2, radius * 0.12, radius * 3.2]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.65, 1, 32]} />
-        <meshBasicMaterial color={selected ? '#ffd392' : node.color} transparent opacity={dimmed ? 0.05 : 0.18} />
+        <meshBasicMaterial color={selected ? '#ffd392' : node.color} transparent opacity={dimmed ? 0.05 : 0.26} />
+      </mesh>
+      <mesh scale={[1.68, 1.68, 1.68]}>
+        <sphereGeometry args={[radius, 18, 18]} />
+        <meshBasicMaterial
+          color={selected ? '#ffd392' : node.color}
+          transparent
+          opacity={dimmed ? 0.03 : selected ? 0.24 : hovered ? 0.18 : 0.12}
+        />
       </mesh>
       <mesh
         onClick={() => onSelect(node.id)}
@@ -276,10 +340,10 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
         <meshStandardMaterial
           color={selected ? '#ffd392' : node.color}
           emissive={selected ? '#ffb347' : node.color}
-          emissiveIntensity={selected ? 1.2 : hovered ? 0.72 : isHub ? 0.55 : 0.34}
+          emissiveIntensity={selected ? 1.35 : hovered ? 0.82 : isHub ? 0.62 : 0.42}
           transparent
-          opacity={dimmed ? 0.18 : 0.96}
-          roughness={0.2}
+          opacity={dimmed ? 0.18 : 0.98}
+          roughness={0.16}
           metalness={0.08}
         />
       </mesh>
@@ -289,25 +353,37 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
 
 type CameraRigProps = {
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
-  selectedNode: LayoutNode | null;
+  layout: ReturnType<typeof buildTopologyLayout>;
 };
 
-function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
+function CameraRig({ handSignalRef, layout }: CameraRigProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const targetVectorRef = useRef(new Vector3(0, 2, 0));
+  const { camera } = useThree();
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    const targetHeight = Math.max(1.35, layout.radius * 0.085);
+    const distance = Math.max(14, layout.radius * 1.16);
+    const height = Math.max(8, layout.radius * 0.72);
+    const target = new Vector3(layout.center[0], targetHeight, layout.center[2]);
+    const position = new Vector3(layout.center[0], height, layout.center[2] + distance);
+
+    camera.position.copy(position);
+    camera.lookAt(target);
+
+    if (controls) {
+      controls.target.copy(target);
+      controls.minDistance = Math.max(8, layout.radius * 0.52);
+      controls.maxDistance = Math.max(26, layout.radius * 2.1);
+      controls.update();
+    }
+  }, [camera, layout.center, layout.radius]);
 
   useFrame(() => {
     const controls = controlsRef.current;
     if (!controls) {
       return;
     }
-
-    const desiredTarget = selectedNode
-      ? new Vector3(selectedNode.position[0], Math.max(0.9, selectedNode.position[1] * 0.34), selectedNode.position[2])
-      : new Vector3(0, 1.35, 0);
-
-    targetVectorRef.current.lerp(desiredTarget, 0.08);
-    controls.target.lerp(targetVectorRef.current, 0.12);
 
     const signal = handSignalRef.current;
     if (signal.active) {
@@ -337,11 +413,11 @@ function CameraRig({ handSignalRef, selectedNode }: CameraRigProps) {
       enableDamping
       dampingFactor={0.09}
       minDistance={8}
-      maxDistance={36}
-      minPolarAngle={0.62}
-      maxPolarAngle={1.34}
-      rotateSpeed={0.68}
-      zoomSpeed={0.74}
+      maxDistance={34}
+      minPolarAngle={0.72}
+      maxPolarAngle={1.3}
+      rotateSpeed={0.72}
+      zoomSpeed={0.82}
     />
   );
 }

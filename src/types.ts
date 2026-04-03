@@ -56,6 +56,7 @@ export interface LayoutResult {
   nodeMap: Map<string, LayoutNode>;
   radius: number;
   hubNoteId: string | null;
+  center: [number, number, number];
 }
 
 export interface HandNavigationSignal {

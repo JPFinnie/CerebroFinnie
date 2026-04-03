@@ -14,9 +14,7 @@ export function NoteInspector({ note, onOpenNote }: NoteInspectorProps) {
       <section className="inspector-shell empty">
         <p className="eyebrow">Inspector</p>
         <h2>Select a note</h2>
-        <p>
-          Pick any node in the terrain or use the search list to inspect the source markdown behind it.
-        </p>
+        <p>Pick any node in the atlas or use search to inspect the source markdown behind it.</p>
       </section>
     );
   }
@@ -68,7 +66,12 @@ export function NoteInspector({ note, onOpenNote }: NoteInspectorProps) {
         </div>
       ) : null}
 
-      <div className="markdown-shell">
+      <div className="alias-block">
+        <p className="mini-label">Preview</p>
+        <p className="support-copy">{note.excerpt || 'No summary excerpt was available for this note.'}</p>
+      </div>
+
+      <div className="markdown-shell inspector-preview">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{renderObsidianMarkdown(note.markdown)}</ReactMarkdown>
       </div>
     </section>
