@@ -41,6 +41,7 @@ Copy `.env.example` to `.env.local` and set:
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
+- `VITE_CEREBRO_SITE_URL`
 - optional `SUPABASE_SNAPSHOT_BUCKET`
 - optional `SUPABASE_SNAPSHOT_PATH`
 - optional `CEREBRO_ALLOWED_EMAIL`
@@ -48,9 +49,14 @@ Copy `.env.example` to `.env.local` and set:
 Recommended Supabase setup:
 
 1. Enable email auth and use magic-link login for `james_finnie@icloud.com`
-2. Keep the snapshot bucket private
-3. Set the same env vars in Vercel for the deployed app
-4. Run `npm run publish-snapshot` on your own machine whenever you want to refresh the remote snapshot
+2. In Supabase Auth URL Configuration, set `Site URL` to your production CerebroFinnie URL instead of `http://localhost:3000`
+3. Add redirect URLs for:
+   - your production URL
+   - your Vercel preview URL pattern
+   - local development, such as `http://localhost:5173/**`
+4. Keep the snapshot bucket private
+5. Set the same env vars in Vercel for the deployed app
+6. Run `npm run publish-snapshot` on your own machine whenever you want to refresh the remote snapshot
 
 At runtime, the app signs in through Supabase Auth, calls `/api/snapshot`, and that server function verifies the Supabase bearer token before downloading the latest snapshot from private Storage.
 

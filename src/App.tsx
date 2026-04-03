@@ -8,7 +8,7 @@ import { NoteInspector } from './components/NoteInspector';
 import { NoteModal } from './components/NoteModal';
 import { useHandNavigation } from './hooks/useHandNavigation';
 import { clearCachedSnapshot, readCachedSnapshot, writeCachedSnapshot } from './lib/snapshot-cache';
-import { defaultLoginEmail, isSupabaseRuntimeEnabled, supabase } from './lib/supabase';
+import { defaultLoginEmail, isSupabaseRuntimeEnabled, magicLinkRedirectTo, supabase } from './lib/supabase';
 import type { TopologyMode, VaultGraph, VaultNote } from './types';
 
 const LOCAL_RUNTIME_LABEL = 'Viewing the locally generated vault snapshot.';
@@ -233,10 +233,9 @@ function App() {
     setIsSendingLink(true);
     setAuthMessage(null);
 
-    const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
     const { error: signInError } = await supabase.auth.signInWithOtp({
       email,
-      options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+      options: magicLinkRedirectTo ? { emailRedirectTo: magicLinkRedirectTo } : undefined,
     });
 
     setIsSendingLink(false);
@@ -246,7 +245,7 @@ function App() {
       return;
     }
 
-    setAuthMessage(`Magic link sent to ${email}. Open it on this device to finish sign-in.`);
+    setAuthMessage(`Magic link sent to ${email}. It should return to ${magicLinkRedirectTo || 'this app'} on this device.`);
   }
 
   async function handleSignOut() {
