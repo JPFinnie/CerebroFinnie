@@ -83,6 +83,12 @@ Recommended snapshot outputs:
 - optional `vault-content.json` for full note bodies
 - optional `semantic-index.json` for embeddings and cluster assignments
 
+This is now partially supported in the build pipeline:
+
+- local builds prefer direct vault ingestion
+- remote builds can consume an existing snapshot file
+- remote builds can also download a snapshot from `CEREBRO_SNAPSHOT_URL`
+
 ### 3. ApiVaultSource
 
 This is the future option if you want live retrieval from a service.

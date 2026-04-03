@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "ingest": "node scripts/build-vault-graph.mjs",
+    "prepare-data": "node scripts/prepare-vault-data.mjs",
     "dev": "npm run ingest && vite",
-    "build": "npm run ingest && tsc -b && vite build",
+    "build": "npm run prepare-data && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -25,6 +25,7 @@ Useful commands:
 
 ```bash
 npm run ingest
+npm run prepare-data
 npm run build
 npm run lint
 ```
@@ -42,6 +43,28 @@ Current pipeline:
 5. Load that generated graph client-side in the viewer
 
 `public/data/vault-graph.json` is ignored by git because it contains the note contents.
+
+## Deployment modes
+
+### Local development
+
+- `npm run dev` requires local vault access
+- it runs `npm run ingest` directly
+
+### Remote builds like Vercel
+
+`npm run build` now runs `npm run prepare-data`, which tries these sources in order:
+
+1. local vault ingestion
+2. existing `public/data/vault-graph.json`
+3. `CEREBRO_SNAPSHOT_URL`
+
+That means a Vercel deployment cannot read your laptop vault directly. It needs one of these:
+
+- a committed snapshot file at `public/data/vault-graph.json`
+- a remotely reachable snapshot URL in `CEREBRO_SNAPSHOT_URL`
+
+Do not set `CEREBRO_VAULT_PATH` on Vercel to a local Windows path. The build machine cannot access your laptop filesystem.
 
 ## Main files
 
