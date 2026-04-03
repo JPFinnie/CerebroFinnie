@@ -30,12 +30,12 @@ export function BrainScene({
   return (
     <div className="scene-shell">
       <Canvas camera={{ position: [0, 13, 17], fov: 44 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
-        <fog attach="fog" args={['#07151d', 14, 38]} />
+        <fog attach="fog" args={['#07151d', 22, 52]} />
         <ambientLight intensity={0.92} />
         <directionalLight position={[18, 22, 12]} intensity={1.45} color="#f0d7ae" />
         <directionalLight position={[-12, 10, -18]} intensity={0.9} color="#80c2dd" />
         <pointLight position={[0, 18, 0]} intensity={0.42} color="#ffb46c" />
-        <Sparkles count={20} scale={[34, 14, 34]} size={1.35} speed={0.08} opacity={0.1} color="#ffe7c9" />
+        <Sparkles count={16} scale={[28, 12, 28]} size={1.35} speed={0.08} opacity={0.08} color="#ffe7c9" />
 
         <SceneCore
           layout={layout}
@@ -75,7 +75,7 @@ function SceneCore({
 }: SceneCoreProps) {
   const terrainGeometry = useMemo(() => {
     const extent = Math.max(24, layout.radius * 2.05);
-    const geometry = new PlaneGeometry(extent, extent, 40, 40);
+    const geometry = new PlaneGeometry(extent, extent, 32, 32);
     geometry.rotateX(-Math.PI / 2);
 
     const position = geometry.getAttribute('position') as BufferAttribute;
@@ -91,7 +91,7 @@ function SceneCore({
         const distanceSquared = dx * dx + dz * dz;
         const spread = 12 + node.scale * 16;
         const influence = Math.exp(-distanceSquared / spread);
-        height += influence * (node.position[1] * 0.18 + node.scale * 0.45);
+        height += influence * (node.position[1] * 0.12 + node.scale * 0.3);
       }
 
       position.setY(index, height);
@@ -225,11 +225,11 @@ function SceneCore({
             metalness={0.04}
             roughness={0.92}
             transparent
-            opacity={0.68}
+            opacity={0.42}
           />
         </mesh>
         <lineSegments geometry={terrainWireframe}>
-          <lineBasicMaterial color="#7db5c5" transparent opacity={0.07} />
+          <lineBasicMaterial color="#7db5c5" transparent opacity={0.04} />
         </lineSegments>
       </group>
 
@@ -238,7 +238,7 @@ function SceneCore({
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[allEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#77b8cf" transparent opacity={0.12} />
+          <lineBasicMaterial color="#77b8cf" transparent opacity={0.08} />
         </lineSegments>
       ) : null}
 
@@ -340,7 +340,7 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
         <meshStandardMaterial
           color={selected ? '#ffd392' : node.color}
           emissive={selected ? '#ffb347' : node.color}
-          emissiveIntensity={selected ? 1.35 : hovered ? 0.82 : isHub ? 0.62 : 0.42}
+          emissiveIntensity={selected ? 1.5 : hovered ? 0.95 : isHub ? 0.72 : 0.52}
           transparent
           opacity={dimmed ? 0.18 : 0.98}
           roughness={0.16}
@@ -363,8 +363,8 @@ function CameraRig({ handSignalRef, layout }: CameraRigProps) {
   useEffect(() => {
     const controls = controlsRef.current;
     const targetHeight = Math.max(1.35, layout.radius * 0.085);
-    const distance = Math.max(14, layout.radius * 1.16);
-    const height = Math.max(8, layout.radius * 0.72);
+    const distance = Math.max(10.5, layout.radius * 1.05);
+    const height = Math.max(7.2, layout.radius * 0.65);
     const target = new Vector3(layout.center[0], targetHeight, layout.center[2]);
     const position = new Vector3(layout.center[0], height, layout.center[2] + distance);
 
@@ -373,8 +373,8 @@ function CameraRig({ handSignalRef, layout }: CameraRigProps) {
 
     if (controls) {
       controls.target.copy(target);
-      controls.minDistance = Math.max(8, layout.radius * 0.52);
-      controls.maxDistance = Math.max(26, layout.radius * 2.1);
+      controls.minDistance = 5;
+      controls.maxDistance = 40;
       controls.update();
     }
   }, [camera, layout.center, layout.radius]);
@@ -412,8 +412,8 @@ function CameraRig({ handSignalRef, layout }: CameraRigProps) {
       ref={controlsRef}
       enableDamping
       dampingFactor={0.09}
-      minDistance={8}
-      maxDistance={34}
+      minDistance={5}
+      maxDistance={40}
       minPolarAngle={0.72}
       maxPolarAngle={1.3}
       rotateSpeed={0.72}

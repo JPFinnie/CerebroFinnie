@@ -10,6 +10,7 @@ import { useHandNavigation } from './hooks/useHandNavigation';
 import { clearCachedSnapshot, readCachedSnapshot, writeCachedSnapshot } from './lib/snapshot-cache';
 import { defaultLoginEmail, isSupabaseRuntimeEnabled, magicLinkRedirectTo, supabase } from './lib/supabase';
 import type { TopologyMode, VaultGraph, VaultNote } from './types';
+import type { ChangeEvent } from 'react';
 
 const LOCAL_RUNTIME_LABEL = 'Viewing the locally generated vault snapshot.';
 const REMOTE_RUNTIME_LABEL = 'Viewing the latest private snapshot from Supabase.';
@@ -23,7 +24,7 @@ function App() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [isFullNoteOpen, setIsFullNoteOpen] = useState(false);
-  const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [isInspectorPanelOpen, setIsInspectorPanelOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(!isSupabaseRuntimeEnabled);
@@ -314,6 +315,60 @@ function App() {
     <div className="app-shell">
       <div className="page-atmosphere" />
 
+      <header className="header-bar">
+        <div className="header-brand">
+          <p className="eyebrow">Cerebro Atlas</p>
+          <div className="header-brand-copy">
+            <strong>Neural knowledge map</strong>
+            <span>{runtimeLabel}</span>
+          </div>
+        </div>
+
+        <dl className="header-stats" aria-label="Vault stats">
+          <div>
+            <dt>Notes</dt>
+            <dd>{graph.noteCount}</dd>
+          </div>
+          <div>
+            <dt>Links</dt>
+            <dd>{graph.edgeCount}</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd>{formatGeneratedAt(graph.generatedAt)}</dd>
+          </div>
+        </dl>
+
+        <label className="header-search" htmlFor="header-note-search">
+          <span className="mini-label">{searchQuery ? `${matchingCount} matches` : 'Search'}</span>
+          <input
+            id="header-note-search"
+            className="search-input header-search-input"
+            type="search"
+            value={searchQuery}
+            placeholder="Search notes, tags, people, projects..."
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setSearchQuery(event.target.value)}
+          />
+        </label>
+
+        <div className="header-actions">
+          <button
+            type="button"
+            className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            onClick={() => setIsControlPanelOpen((current) => !current)}
+          >
+            {isControlPanelOpen ? 'Hide Controls' : 'Show Controls'}
+          </button>
+          <button
+            type="button"
+            className={isInspectorPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            onClick={() => setIsInspectorPanelOpen((current) => !current)}
+          >
+            {isInspectorPanelOpen ? 'Hide Note' : 'Show Note'}
+          </button>
+        </div>
+      </header>
+
       <main className="scene-panel">
         <BrainScene
           graph={graph}
@@ -325,23 +380,6 @@ function App() {
           onSelect={handleSelectNote}
         />
       </main>
-
-      <div className="panel-toggle-bar">
-        <button
-          type="button"
-          className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
-          onClick={() => setIsControlPanelOpen((current) => !current)}
-        >
-          {isControlPanelOpen ? 'Hide Controls' : 'Show Controls'}
-        </button>
-        <button
-          type="button"
-          className={isInspectorPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
-          onClick={() => setIsInspectorPanelOpen((current) => !current)}
-        >
-          {isInspectorPanelOpen ? 'Hide Note' : 'Show Note'}
-        </button>
-      </div>
 
       {isControlPanelOpen ? (
         <aside className="panel left-panel overlay-panel">
@@ -451,6 +489,17 @@ async function readErrorMessage(response: Response, fallbackMessage: string) {
 
 function createSearchHaystack(note: VaultNote) {
   return `${note.title} ${note.path} ${note.tags.join(' ')} ${note.excerpt}`.toLowerCase();
+}
+
+function formatGeneratedAt(value: string) {
+  const date = new Date(value);
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
 }
 
 export default App;
