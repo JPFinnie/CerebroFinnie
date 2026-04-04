@@ -38,7 +38,6 @@ export function BrainScene({
         <SceneCore
           layout={layout}
           graph={graph}
-          topology={topology}
           selectedNoteId={selectedNoteId}
           activeGroup={activeGroup}
           searchMatchIds={searchMatchIds}
@@ -54,7 +53,6 @@ export function BrainScene({
 type SceneCoreProps = {
   layout: ReturnType<typeof buildTopologyLayout>;
   graph: VaultGraph;
-  topology: TopologyMode;
   selectedNoteId: string | null;
   activeGroup: string | null;
   searchMatchIds: Set<string> | null;
@@ -66,7 +64,6 @@ type SceneCoreProps = {
 function SceneCore({
   layout,
   graph,
-  topology,
   selectedNoteId,
   activeGroup,
   searchMatchIds,
@@ -149,40 +146,7 @@ function SceneCore({
     return new Float32Array(values);
   }, [graph.edges, layout.nodeMap, selectedNoteId]);
 
-  const labelNodeIds = useMemo(() => {
-    const visibleNodes = layout.nodes.filter((node) => visibleIds.has(node.id));
-
-    if (topology === 'clustered') {
-      const labelIds = new Set<string>();
-      const notesByGroup = new Map<string, LayoutNode[]>();
-
-      for (const node of visibleNodes) {
-        const existing = notesByGroup.get(node.group);
-        if (existing) {
-          existing.push(node);
-          continue;
-        }
-
-        notesByGroup.set(node.group, [node]);
-      }
-
-      for (const nodes of notesByGroup.values()) {
-        nodes.sort((left, right) => right.importance - left.importance || left.title.localeCompare(right.title));
-        if (nodes[0]) {
-          labelIds.add(nodes[0].id);
-        }
-      }
-
-      return labelIds;
-    }
-
-    return new Set(
-      [...visibleNodes]
-        .sort((left, right) => right.importance - left.importance || left.title.localeCompare(right.title))
-        .slice(0, 5)
-        .map((node) => node.id),
-    );
-  }, [layout.nodes, topology, visibleIds]);
+  // All visible nodes get labels — distanceFactor handles zoom-based fade at distance
 
   const selectedNode = selectedNoteId ? layout.nodeMap.get(selectedNoteId) ?? null : null;
 
@@ -218,17 +182,17 @@ function SceneCore({
       ))}
 
       {layout.nodes.map((node) => {
-        if (node.id === selectedNoteId || !labelNodeIds.has(node.id) || !visibleIds.has(node.id)) {
+        if (node.id === selectedNoteId || !visibleIds.has(node.id)) {
           return null;
         }
 
         return (
           <Html
             key={`label-${node.id}`}
-            position={[node.position[0], node.position[1] + node.scale * 0.45 + 0.5, node.position[2]]}
+            position={[node.position[0], node.position[1] + node.scale * 0.28 + 0.38, node.position[2]]}
             center
             className="node-label"
-            distanceFactor={20}
+            distanceFactor={14}
           >
             <div className="node-label-card minor">
               <span>{node.title}</span>
@@ -273,21 +237,26 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
   const [hovered, setHovered] = useState(false);
   useCursor(hovered);
 
-  // Scale down significantly for a neuron/brain-node look
-  const baseRadius = node.scale * 0.42;
-  const radius = selected ? baseRadius * 1.55 : hovered ? baseRadius * 1.2 : baseRadius;
-  const color = selected ? '#ffd08b' : hovered ? '#a8dff0' : node.color;
+  // Star-map look: sharp, small points with clear size hierarchy
+  const baseRadius = node.scale * 0.28;
+  const radius = selected ? baseRadius * 1.7 : hovered ? baseRadius * 1.3 : baseRadius;
+  // Brighter palette: crisp white-blue default, gold selected, cyan hovered
+  const color = selected ? '#ffd777' : hovered ? '#7de8ff' : node.color;
+  const opacity = dimmed ? 0.08 : selected ? 1.0 : isHub ? 1.0 : hovered ? 1.0 : 0.9;
 
   return (
     <group position={node.position}>
-      {/* Visible node dot */}
+      {/* Outer glow halo (star bloom effect) */}
+      {!dimmed && (
+        <mesh>
+          <sphereGeometry args={[radius * 2.4, 5, 3]} />
+          <meshBasicMaterial color={color} transparent opacity={selected ? 0.14 : 0.06} />
+        </mesh>
+      )}
+      {/* Visible node — tight point-star sphere */}
       <mesh>
-        <sphereGeometry args={[radius, 8, 6]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={dimmed ? 0.1 : selected ? 1.0 : isHub ? 0.95 : 0.82}
-        />
+        <sphereGeometry args={[radius, 6, 4]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} />
       </mesh>
       {/* Invisible larger hit area for easier clicking */}
       <mesh
@@ -295,7 +264,7 @@ function NoteMarker({ node, selected, dimmed, isHub, onSelect }: NoteMarkerProps
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
-        <sphereGeometry args={[Math.max(radius * 2.2, 0.38), 6, 4]} />
+        <sphereGeometry args={[Math.max(radius * 2.8, 0.42), 6, 4]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
@@ -341,18 +310,23 @@ function CameraRig({ handSignalRef, layout, isPaused, onGestureSelect }: CameraR
 
     const signal = handSignalRef.current;
 
-    // Pan (from Pointing_Up gesture)
+    // Pan (from Pointing_Up gesture) — horizontal and vertical
     if (Math.abs(signal.panDelta.x) > 0.001 || Math.abs(signal.panDelta.y) > 0.001) {
       const dist = controls.getDistance();
       const panScale = dist * 0.06;
 
-      // Camera's right vector
+      // Camera's right vector for horizontal pan
       const right = new Vector3();
       right.subVectors(cam.position, controls.target).normalize();
       right.crossVectors(cam.up, right).normalize();
 
+      // Horizontal pan
       controls.target.addScaledVector(right, signal.panDelta.x * panScale);
       cam.position.addScaledVector(right, signal.panDelta.x * panScale);
+
+      // Vertical pan — screen Y is inverted relative to world Y
+      controls.target.y -= signal.panDelta.y * panScale;
+      cam.position.y -= signal.panDelta.y * panScale;
 
       signal.panDelta.x *= 0.72;
       signal.panDelta.y *= 0.72;
