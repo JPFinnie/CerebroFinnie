@@ -46,6 +46,8 @@ export interface VaultGraph {
 
 export type TopologyMode = 'centralized' | 'clustered' | 'distributed';
 
+export type ZoomTier = 'atlas' | 'explore' | 'close';
+
 export interface LayoutNode extends VaultNote {
   position: [number, number, number];
   scale: number;
@@ -76,6 +78,8 @@ export interface HandOverlayState {
   message: string;
   cursor: { x: number; y: number } | null;
   separation: number;
+  landmarks?: { x: number; y: number; z: number }[][];
+  gestureLabel?: string;
 }
 
 export interface HandNavigationController {
