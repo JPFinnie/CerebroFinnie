@@ -148,6 +148,8 @@ export function useHandNavigation(): HandNavigationController {
             message: isRunning ? READY_MESSAGE : 'Camera offline',
             cursor: null,
             separation: 0,
+            landmarks: [],
+            gestureLabel: '',
           });
         }
 
@@ -175,6 +177,8 @@ export function useHandNavigation(): HandNavigationController {
             message: isPausedRef.current ? 'Resuming gesture control…' : 'Pausing gesture control…',
             cursor: commandRef.current.cursor,
             separation: 0,
+            landmarks: result?.landmarks ?? [],
+            gestureLabel: 'Thumb_Up',
           });
         }
         return;
@@ -198,6 +202,8 @@ export function useHandNavigation(): HandNavigationController {
             message: 'Paused — hover over a node 1.5s to select it',
             cursor: commandRef.current.cursor,
             separation: 0,
+            landmarks: result?.landmarks ?? [],
+            gestureLabel: activeHand.label,
           });
         }
         return;
@@ -221,6 +227,8 @@ export function useHandNavigation(): HandNavigationController {
             message: activeHand.label === 'Closed_Fist' ? 'Zoom in' : 'Zoom out',
             cursor: commandRef.current.cursor,
             separation: memory.separation,
+            landmarks: result?.landmarks ?? [],
+            gestureLabel: activeHand.label,
           });
         }
         return;
@@ -264,6 +272,8 @@ export function useHandNavigation(): HandNavigationController {
             message: 'Panning',
             cursor: smoothPanPoint,
             separation: 0,
+            landmarks: result?.landmarks ?? [],
+            gestureLabel: 'Pointing_Up',
           });
         }
         return;
@@ -316,6 +326,8 @@ export function useHandNavigation(): HandNavigationController {
               : 'Orbiting (fallback)',
           cursor: smoothMidpoint,
           separation: smoothSeparation,
+          landmarks: result?.landmarks ?? [],
+          gestureLabel: activeHand.label,
         });
       }
     },
