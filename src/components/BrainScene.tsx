@@ -1,7 +1,7 @@
 import { Html, OrbitControls, useCursor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BufferAttribute, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { buildTopologyLayout } from '../lib/layouts';
 import type { HandNavigationSignal, LayoutNode, TopologyMode, VaultGraph } from '../types';
