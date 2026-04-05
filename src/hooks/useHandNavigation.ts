@@ -31,8 +31,8 @@ type GestureMemory = {
   separation: number;
   lastVideoTime: number;
   lastUiUpdate: number;
-  lastThumbUpSeen: boolean;
-  lastPauseToggle: number;
+  lastPointingUp: boolean;
+  lastPointingUpTime: number;
 };
 
 type NavigationHand =
@@ -44,7 +44,7 @@ type NavigationHand =
   | {
       landmarks: HandPoint[];
       mode: 'gesture';
-      label: 'Closed_Fist' | 'Open_Palm' | 'Pointing_Up' | 'Thumb_Up';
+      label: 'Closed_Fist' | 'Open_Palm' | 'Pointing_Up';
     };
 
 const DEFAULT_SIGNAL: HandNavigationSignal = {
@@ -55,6 +55,7 @@ const DEFAULT_SIGNAL: HandNavigationSignal = {
   panDelta: { x: 0, y: 0 },
   cursor: { x: 0.5, y: 0.5 },
   separation: 0,
+  gestureTrigger: null,
 };
 
 const DEFAULT_OVERLAY: HandOverlayState = {
@@ -64,7 +65,7 @@ const DEFAULT_OVERLAY: HandOverlayState = {
   separation: 0,
 };
 
-const READY_MESSAGE = 'Victory orbits · Point to pan · Fist zooms in · Palm zooms out · Thumb up pauses';
+const READY_MESSAGE = 'Victory orbits · Palm pans · Fist zooms · Point to select (×2 open note)';
 
 export function useHandNavigation(): HandNavigationController {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -78,8 +79,8 @@ export function useHandNavigation(): HandNavigationController {
     separation: 0,
     lastVideoTime: -1,
     lastUiUpdate: 0,
-    lastThumbUpSeen: false,
-    lastPauseToggle: 0,
+    lastPointingUp: false,
+    lastPointingUpTime: 0,
   });
 
   const [overlay, setOverlay] = useState<HandOverlayState>(DEFAULT_OVERLAY);
@@ -118,8 +119,8 @@ export function useHandNavigation(): HandNavigationController {
       separation: 0,
       lastVideoTime: -1,
       lastUiUpdate: 0,
-      lastThumbUpSeen: false,
-      lastPauseToggle: 0,
+      lastPointingUp: false,
+      lastPointingUpTime: 0,
     };
 
     commandRef.current = { ...DEFAULT_SIGNAL };
@@ -134,7 +135,7 @@ export function useHandNavigation(): HandNavigationController {
       const memory = gestureMemoryRef.current;
 
       if (!activeHand) {
-        memory.lastThumbUpSeen = false;
+        memory.lastPointingUp = false;
         commandRef.current.active = false;
         commandRef.current.panDelta = { x: 0, y: 0 };
 
@@ -156,37 +157,7 @@ export function useHandNavigation(): HandNavigationController {
         return;
       }
 
-      // Thumb_Up toggles pause (works even when paused, debounced)
-      if (activeHand.label === 'Thumb_Up') {
-        if (!memory.lastThumbUpSeen && now - memory.lastPauseToggle > 1000) {
-          memory.lastPauseToggle = now;
-          setIsPaused((p) => !p);
-        }
-        memory.lastThumbUpSeen = true;
-        commandRef.current.active = false;
-        commandRef.current.deltaAzimuth = 0;
-        commandRef.current.deltaPolar = 0;
-        commandRef.current.zoomDelta = 0;
-        commandRef.current.panDelta = { x: 0, y: 0 };
-        commandRef.current.cursor = { x: 1 - activeHand.landmarks[0].x, y: activeHand.landmarks[0].y };
-
-        if (now - memory.lastUiUpdate > 90) {
-          memory.lastUiUpdate = now;
-          setOverlay({
-            status: 'active',
-            message: isPausedRef.current ? 'Resuming gesture control…' : 'Pausing gesture control…',
-            cursor: commandRef.current.cursor,
-            separation: 0,
-            landmarks: result?.landmarks ?? [],
-            gestureLabel: 'Thumb_Up',
-          });
-        }
-        return;
-      }
-
-      memory.lastThumbUpSeen = false;
-
-      // When paused, only track cursor for dwell-select
+      // When paused, only track cursor position
       if (isPausedRef.current) {
         commandRef.current.active = false;
         commandRef.current.deltaAzimuth = 0;
@@ -199,7 +170,7 @@ export function useHandNavigation(): HandNavigationController {
           memory.lastUiUpdate = now;
           setOverlay({
             status: 'active',
-            message: 'Paused — hover over a node 1.5s to select it',
+            message: 'Frozen — point at a node to select it',
             cursor: commandRef.current.cursor,
             separation: 0,
             landmarks: result?.landmarks ?? [],
@@ -209,42 +180,43 @@ export function useHandNavigation(): HandNavigationController {
         return;
       }
 
-      // Zoom: Closed_Fist / Open_Palm
-      if (activeHand.label === 'Closed_Fist' || activeHand.label === 'Open_Palm') {
+      // Zoom: Closed_Fist
+      if (activeHand.label === 'Closed_Fist') {
         commandRef.current.active = true;
         commandRef.current.deltaAzimuth = 0;
         commandRef.current.deltaPolar = 0;
-        commandRef.current.zoomDelta = activeHand.label === 'Closed_Fist' ? 0.07 : -0.07;
+        commandRef.current.zoomDelta = 0.04;
         commandRef.current.cursor = { x: 1 - activeHand.landmarks[0].x, y: activeHand.landmarks[0].y };
         commandRef.current.panDelta = { x: 0, y: 0 };
         memory.midpoint = null;
         memory.panPoint = null;
+        memory.lastPointingUp = false;
 
         if (now - memory.lastUiUpdate > 90) {
           memory.lastUiUpdate = now;
           setOverlay({
             status: 'active',
-            message: activeHand.label === 'Closed_Fist' ? 'Zoom in' : 'Zoom out',
+            message: 'Zoom in',
             cursor: commandRef.current.cursor,
             separation: memory.separation,
             landmarks: result?.landmarks ?? [],
-            gestureLabel: activeHand.label,
+            gestureLabel: 'Closed_Fist',
           });
         }
         return;
       }
 
-      // Pan: Pointing_Up — track index fingertip
-      if (activeHand.label === 'Pointing_Up') {
+      // Pan: Open_Palm — track landmark 9 (middle knuckle, more stable)
+      if (activeHand.label === 'Open_Palm') {
         const hand = activeHand.landmarks;
         const panPoint = {
-          x: 1 - hand[8].x,
-          y: hand[8].y,
+          x: 1 - hand[9].x,
+          y: hand[9].y,
         };
         const smoothPanPoint = memory.panPoint
           ? {
-              x: lerp(memory.panPoint.x, panPoint.x, 0.38),
-              y: lerp(memory.panPoint.y, panPoint.y, 0.38),
+              x: lerp(memory.panPoint.x, panPoint.x, 0.45),
+              y: lerp(memory.panPoint.y, panPoint.y, 0.45),
             }
           : panPoint;
 
@@ -254,8 +226,8 @@ export function useHandNavigation(): HandNavigationController {
           commandRef.current.deltaPolar = 0;
           commandRef.current.zoomDelta = 0;
           commandRef.current.panDelta = {
-            x: clamp((smoothPanPoint.x - memory.panPoint.x) * 3.0, -0.14, 0.14),
-            y: clamp((smoothPanPoint.y - memory.panPoint.y) * 3.0, -0.14, 0.14),
+            x: clamp((smoothPanPoint.x - memory.panPoint.x) * 2.4, -0.16, 0.16),
+            y: clamp((smoothPanPoint.y - memory.panPoint.y) * 2.4, -0.16, 0.16),
           };
           commandRef.current.cursor = smoothPanPoint;
         } else {
@@ -264,6 +236,7 @@ export function useHandNavigation(): HandNavigationController {
 
         memory.panPoint = smoothPanPoint;
         memory.midpoint = null;
+        memory.lastPointingUp = false;
 
         if (now - memory.lastUiUpdate > 90) {
           memory.lastUiUpdate = now;
@@ -271,6 +244,48 @@ export function useHandNavigation(): HandNavigationController {
             status: 'active',
             message: 'Panning',
             cursor: smoothPanPoint,
+            separation: 0,
+            landmarks: result?.landmarks ?? [],
+            gestureLabel: 'Open_Palm',
+          });
+        }
+        return;
+      }
+
+      // Select / Open: Pointing_Up — rising-edge tap detection
+      if (activeHand.label === 'Pointing_Up') {
+        const hand = activeHand.landmarks;
+        const cursor = { x: 1 - hand[8].x, y: hand[8].y };
+        const isRisingEdge = !memory.lastPointingUp;
+
+        if (isRisingEdge) {
+          const timeSinceLast = now - memory.lastPointingUpTime;
+          if (timeSinceLast < 600) {
+            // Double tap → open/close note
+            commandRef.current.gestureTrigger = { type: 'open', cursor };
+          } else {
+            // Single tap → select nearest node
+            commandRef.current.gestureTrigger = { type: 'select', cursor };
+          }
+          memory.lastPointingUpTime = now;
+        }
+
+        memory.lastPointingUp = true;
+        commandRef.current.active = false;
+        commandRef.current.deltaAzimuth = 0;
+        commandRef.current.deltaPolar = 0;
+        commandRef.current.zoomDelta = 0;
+        commandRef.current.panDelta = { x: 0, y: 0 };
+        commandRef.current.cursor = cursor;
+        memory.midpoint = null;
+        memory.panPoint = null;
+
+        if (now - memory.lastUiUpdate > 90) {
+          memory.lastUiUpdate = now;
+          setOverlay({
+            status: 'active',
+            message: 'Point to select • double = open note',
+            cursor,
             separation: 0,
             landmarks: result?.landmarks ?? [],
             gestureLabel: 'Pointing_Up',
@@ -296,10 +311,9 @@ export function useHandNavigation(): HandNavigationController {
 
       if (memory.midpoint) {
         commandRef.current.active = true;
-        // Reduced sensitivity: was 2.8/2.3/24
         commandRef.current.deltaAzimuth = clamp((smoothMidpoint.x - memory.midpoint.x) * 1.8, -0.08, 0.08);
         commandRef.current.deltaPolar = clamp((smoothMidpoint.y - memory.midpoint.y) * 1.5, -0.06, 0.06);
-        commandRef.current.zoomDelta = clamp((smoothSeparation - memory.separation) * 14, -0.12, 0.12);
+        commandRef.current.zoomDelta = clamp((smoothSeparation - memory.separation) * 5, -0.12, 0.12);
         commandRef.current.cursor = smoothMidpoint;
         commandRef.current.separation = smoothSeparation;
         commandRef.current.panDelta = { x: 0, y: 0 };
@@ -315,6 +329,7 @@ export function useHandNavigation(): HandNavigationController {
       memory.midpoint = smoothMidpoint;
       memory.separation = smoothSeparation;
       memory.panPoint = null;
+      memory.lastPointingUp = false;
 
       if (now - memory.lastUiUpdate > 90) {
         memory.lastUiUpdate = now;
@@ -381,7 +396,7 @@ export function useHandNavigation(): HandNavigationController {
         minHandPresenceConfidence: 0.65,
         minTrackingConfidence: 0.55,
         cannedGesturesClassifierOptions: {
-          categoryAllowlist: ['Victory', 'Closed_Fist', 'Open_Palm', 'Pointing_Up', 'Thumb_Up'],
+          categoryAllowlist: ['Victory', 'Closed_Fist', 'Open_Palm', 'Pointing_Up'],
           scoreThreshold: 0.4,
           maxResults: 1,
         },
@@ -406,8 +421,8 @@ export function useHandNavigation(): HandNavigationController {
         separation: 0,
         lastVideoTime: -1,
         lastUiUpdate: 0,
-        lastThumbUpSeen: false,
-        lastPauseToggle: 0,
+        lastPointingUp: false,
+        lastPointingUpTime: 0,
       };
 
       setIsRunning(true);
@@ -477,8 +492,7 @@ function getNavigationHand(result: GestureRecognizerResultLike | null): Navigati
       (topGesture?.categoryName === 'Victory' ||
         topGesture?.categoryName === 'Closed_Fist' ||
         topGesture?.categoryName === 'Open_Palm' ||
-        topGesture?.categoryName === 'Pointing_Up' ||
-        topGesture?.categoryName === 'Thumb_Up') &&
+        topGesture?.categoryName === 'Pointing_Up') &&
       (topGesture.score ?? 0) >= 0.4
     ) {
       return {

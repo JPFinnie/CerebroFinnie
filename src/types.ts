@@ -69,6 +69,7 @@ export interface HandNavigationSignal {
   panDelta: { x: number; y: number };
   cursor: { x: number; y: number };
   separation: number;
+  gestureTrigger: { type: 'select' | 'open'; cursor: { x: number; y: number } } | null;
 }
 
 export type HandStatus = 'idle' | 'loading' | 'ready' | 'active' | 'error';

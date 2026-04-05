@@ -764,11 +764,12 @@
   background: #ff7b62;
 }
 
-/* Camera preview inset — bottom-right, hidden until toggled */
+/* Camera preview inset — bottom-left, hidden until toggled */
 .camera-preview-inset {
   position: fixed;
-  bottom: 4.8rem;
-  right: 1.2rem;
+  bottom: 6.6rem;
+  right: auto;
+  left: 1.4rem;
   z-index: 27;
   width: 12rem;
   border: 1px solid rgba(255, 243, 222, 0.14);
