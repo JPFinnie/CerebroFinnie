@@ -1,6 +1,136 @@
 # CerebroFinnie
 
-3D topographical viewer for an Obsidian vault, with hand-gesture navigation, full-note inspection, and a private Supabase-backed mobile runtime.
+A 3D topographical knowledge graph viewer for Obsidian vaults — navigate your second brain as an interactive terrain map with hand-gesture controls and private mobile access.
+
+## Why we built it
+
+Obsidian is a powerful tool for building a personal knowledge base, but its built-in graph view is flat, hard to navigate at scale, and doesn't convey the relative weight or topology of your ideas. We wanted a way to *experience* a knowledge vault spatially — to see which notes are central, how clusters of thought form, and to literally reach into the graph and move through it.
+
+CerebroFinnie turns a vault into a 3D landscape where note importance becomes elevation, link density becomes proximity, and topic clusters become visible terrain. Hand-gesture navigation lets you orbit, pan, zoom, and select notes without touching a keyboard. A private Supabase-backed runtime means you can explore your vault from your phone without ever exposing your notes publicly.
+
+## Project breakdown
+
+### Architecture at a glance
+
+The project has two distinct layers:
+
+1. **Ingestion** — a Node.js pipeline that reads an Obsidian vault from the local filesystem, parses every markdown note, resolves wikilinks into graph edges, computes importance scores, and emits a single `vault-graph.json` snapshot.
+2. **Visualization** — a React + Three.js web app that consumes the snapshot and renders it as an interactive 3D scene with search, filtering, note inspection, and gesture-based camera control.
+
+The browser never touches the filesystem directly. This separation keeps the runtime fast and makes deployment flexible — you can serve the snapshot locally, commit it, host it at a URL, or deliver it through an authenticated API.
+
+### Ingestion pipeline
+
+`scripts/build-vault-graph.mjs` is the retrieval boundary. It:
+
+- Resolves the vault root from `CEREBRO_VAULT_PATH`, `cerebro.config.json`, or the nearest parent containing `.obsidian`
+- Walks all markdown files, parsing frontmatter (tags, aliases, dates) and body content with `gray-matter`
+- Extracts wikilinks and resolves them by path, basename, or alias into directed graph edges
+- Computes an **importance score** for each note based on incoming links, outgoing links, tag count, and word count
+- Reads Obsidian's `graph.json` color groups for cluster assignment
+- Outputs `public/data/vault-graph.json` with full note metadata, edges, groups, and content
+
+### 3D visualization
+
+`src/components/BrainScene.tsx` renders the knowledge graph using Three.js via React Three Fiber:
+
+- Notes appear as spheres — larger and higher for more important notes
+- Edges connect linked notes as lines
+- Color coding reflects folder or tag-based groups, with translucent glow overlays for clusters
+- Click a node to inspect it; double-click to read the full note
+
+### Three topology modes
+
+The app offers three layout algorithms (in `src/lib/layouts.ts`) that arrange the graph differently:
+
+| Mode | Concept | Layout |
+|------|---------|--------|
+| **Centralized** | Hub-and-spoke | Radiates outward from the highest-importance note |
+| **Clustered** (default) | Force-directed grouping | Notes cluster by topic with organic spacing |
+| **Distributed** | Flat peer network | Self-organizing layout emphasizing equal connectivity |
+
+### Hand-gesture navigation
+
+`src/hooks/useHandNavigation.ts` uses MediaPipe's gesture recognition model running entirely in the browser — no server inference required:
+
+| Gesture | Action |
+|---------|--------|
+| Victory (V-hand) | Orbit the camera |
+| Open palm | Pan the camera |
+| Closed fist | Zoom in/out |
+| Point up | Position cursor to select notes |
+| Double-point | Open the selected note |
+
+A camera overlay shows the video feed with hand landmarks, gesture confidence, and cursor position.
+
+### Note inspection UI
+
+- **Search bar** — full-text search across titles, paths, tags, and excerpts
+- **Left panel** (`ControlHud.tsx`) — topology switcher, group/folder filters, matching notes list, graph stats
+- **Right panel** (`NoteInspector.tsx`) — selected note metadata: importance score, link counts, word count, excerpt
+- **Modal view** (`NoteModal.tsx`) — full rendered markdown with a toggle for raw source
+
+### Private mobile access with Supabase
+
+For on-the-go access without exposing your notes:
+
+1. Run `npm run publish-snapshot` locally to upload the vault snapshot to a private Supabase Storage bucket
+2. The deployed app presents a login screen (`AuthScreen.tsx`) using Supabase Auth (magic-link or password)
+3. After sign-in, the app calls `/api/snapshot` — a serverless function that verifies the bearer token and streams the snapshot from private storage
+4. The browser caches the snapshot locally for fast repeat access
+5. An email allowlist in the API function restricts who can access the data
+
+### Tech stack
+
+- **React 19** with TypeScript
+- **Three.js** / React Three Fiber / Drei for 3D rendering
+- **MediaPipe Tasks Vision** for client-side hand tracking
+- **Vite** for build tooling
+- **Supabase** for auth and private storage
+- **gray-matter** for frontmatter parsing
+- **react-markdown** with remark-gfm for note rendering
+- **Vercel** for deployment (serverless functions + static hosting)
+
+## How it works end-to-end
+
+### Local development
+
+```
+Obsidian vault on disk
+        │
+        ▼
+  npm run dev
+        │
+        ├── runs build-vault-graph.mjs
+        │       → parses notes, resolves links, computes scores
+        │       → writes public/data/vault-graph.json
+        │
+        └── starts Vite dev server
+                → browser loads vault-graph.json
+                → renders 3D scene
+                → user explores with mouse or hand gestures
+```
+
+### Remote deployment (Supabase mode)
+
+```
+Obsidian vault on disk
+        │
+        ▼
+  npm run publish-snapshot
+        │
+        └── uploads vault-graph.json to private Supabase bucket
+
+        ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+
+  User opens deployed app on phone/laptop
+        │
+        ├── Supabase Auth login (magic link)
+        ├── App calls /api/snapshot with bearer token
+        ├── Server verifies token, downloads from Supabase Storage
+        ├── Browser receives and caches snapshot
+        └── 3D scene renders with full vault data
+```
 
 ## Setup
 
@@ -26,11 +156,11 @@ npm run dev
 Useful commands:
 
 ```bash
-npm run ingest
-npm run prepare-data
-npm run publish-snapshot
-npm run build
-npm run lint
+npm run ingest             # Generate vault graph from local vault
+npm run prepare-data       # Smart data prep for builds
+npm run publish-snapshot   # Upload snapshot to Supabase Storage
+npm run build              # Production build
+npm run lint               # Run ESLint
 ```
 
 ## Private mobile mode with Supabase
@@ -48,7 +178,7 @@ Copy `.env.example` to `.env.local` and set:
 
 Recommended Supabase setup:
 
-1. Enable email auth and use magic-link login for `james_finnie@icloud.com`
+1. Enable email auth and use magic-link login for your email
 2. In Supabase Auth URL Configuration, set `Site URL` to your production CerebroFinnie URL instead of `http://localhost:3000`
 3. Add redirect URLs for:
    - your production URL
@@ -100,14 +230,15 @@ Do not set `CEREBRO_VAULT_PATH` on Vercel to a local Windows path. The build mac
 
 ## Main files
 
-- `scripts/build-vault-graph.mjs`: local vault ingestion
-- `scripts/publish-snapshot.mjs`: local publish step to private Supabase Storage
-- `api/snapshot.js`: authenticated snapshot fetch for the deployed app
-- `src/App.tsx`: app shell and note selection state
-- `src/components/BrainScene.tsx`: Three.js terrain and graph rendering
-- `src/components/ControlHud.tsx`: search, grouping, and camera controls
-- `src/components/NoteInspector.tsx`: side inspector
-- `src/components/NoteModal.tsx`: full-note view
-- `src/components/AuthScreen.tsx`: Supabase login screen
-- `src/hooks/useHandNavigation.ts`: MediaPipe gesture control
-- `docs/architecture.md`: architecture notes and future direction
+- `scripts/build-vault-graph.mjs` — local vault ingestion
+- `scripts/publish-snapshot.mjs` — local publish step to private Supabase Storage
+- `api/snapshot.js` — authenticated snapshot fetch for the deployed app
+- `src/App.tsx` — app shell and note selection state
+- `src/components/BrainScene.tsx` — Three.js terrain and graph rendering
+- `src/components/ControlHud.tsx` — search, grouping, and camera controls
+- `src/components/NoteInspector.tsx` — side inspector
+- `src/components/NoteModal.tsx` — full-note view
+- `src/components/AuthScreen.tsx` — Supabase login screen
+- `src/hooks/useHandNavigation.ts` — MediaPipe gesture control
+- `src/lib/layouts.ts` — topology layout algorithms
+- `docs/architecture.md` — architecture notes and future direction
