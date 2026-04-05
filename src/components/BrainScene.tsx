@@ -34,7 +34,9 @@ type BrainSceneProps = {
   searchMatchIds: Set<string> | null;
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
   isPaused: boolean;
+  isGestureRunning: boolean;
   onSelect: (noteId: string) => void;
+  onOpenNote: () => void;
 };
 
 export function BrainScene({
@@ -45,7 +47,9 @@ export function BrainScene({
   searchMatchIds,
   handSignalRef,
   isPaused,
+  isGestureRunning,
   onSelect,
+  onOpenNote,
 }: BrainSceneProps) {
   const layout = useMemo(() => buildTopologyLayout(graph, topology), [graph, topology]);
 
@@ -64,7 +68,9 @@ export function BrainScene({
           searchMatchIds={searchMatchIds}
           handSignalRef={handSignalRef}
           isPaused={isPaused}
+          isGestureRunning={isGestureRunning}
           onSelect={onSelect}
+          onOpenNote={onOpenNote}
         />
       </Canvas>
     </div>
@@ -82,7 +88,9 @@ type SceneCoreProps = {
   searchMatchIds: Set<string> | null;
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
   isPaused: boolean;
+  isGestureRunning: boolean;
   onSelect: (noteId: string) => void;
+  onOpenNote: () => void;
 };
 
 function SceneCore({
@@ -94,7 +102,9 @@ function SceneCore({
   searchMatchIds,
   handSignalRef,
   isPaused,
+  isGestureRunning,
   onSelect,
+  onOpenNote,
 }: SceneCoreProps) {
   // ── Zoom tier state (used for JSX label/glow conditionals) ─────────────────
   const zoomTierRef = useRef<ZoomTier>('explore');
@@ -284,6 +294,7 @@ function SceneCore({
           dimmed={!visibleIds.has(node.id)}
           isHub={node.id === layout.hubNoteId}
           hasSelection={hasSelection}
+          isGestureRunning={isGestureRunning}
           onSelect={onSelect}
         />
       ))}
@@ -346,6 +357,7 @@ function SceneCore({
         layout={layout}
         isPaused={isPaused}
         onGestureSelect={onSelect}
+        onOpenNote={onOpenNote}
         zoomTierRef={zoomTierRef}
         onTierChange={handleTierChange}
         focusTarget={selectedNode ? selectedNode.position : null}
@@ -399,10 +411,11 @@ type NoteMarkerProps = {
   dimmed: boolean;
   isHub: boolean;
   hasSelection: boolean;
+  isGestureRunning: boolean;
   onSelect: (noteId: string) => void;
 };
 
-function NoteMarker({ node, selected, dimmed, isHub, hasSelection, onSelect }: NoteMarkerProps) {
+function NoteMarker({ node, selected, dimmed, isHub, hasSelection, isGestureRunning, onSelect }: NoteMarkerProps) {
   const [hovered, setHovered] = useState(false);
   useCursor(hovered);
 
@@ -439,7 +452,7 @@ function NoteMarker({ node, selected, dimmed, isHub, hasSelection, onSelect }: N
       {/* Invisible hit area */}
       <mesh
         onClick={() => onSelect(node.id)}
-        onPointerOver={() => setHovered(true)}
+        onPointerOver={() => { if (!isGestureRunning) setHovered(true); }}
         onPointerOut={() => setHovered(false)}
       >
         <sphereGeometry args={[Math.max(radius * 2.8, 0.42), 6, 4]} />
@@ -456,6 +469,7 @@ type CameraRigProps = {
   layout: ReturnType<typeof buildTopologyLayout>;
   isPaused: boolean;
   onGestureSelect: (noteId: string) => void;
+  onOpenNote: () => void;
   zoomTierRef: React.MutableRefObject<ZoomTier>;
   onTierChange: (t: ZoomTier) => void;
   focusTarget: [number, number, number] | null;
@@ -466,13 +480,13 @@ function CameraRig({
   layout,
   isPaused,
   onGestureSelect,
+  onOpenNote,
   zoomTierRef,
   onTierChange,
   focusTarget,
 }: CameraRigProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const { camera } = useThree();
-  const dwellRef = useRef({ x: -1, y: -1, time: 0 });
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -493,7 +507,7 @@ function CameraRig({
     }
   }, [camera, layout.center, layout.radius]);
 
-  useFrame(({ camera: cam }, delta) => {
+  useFrame(({ camera: cam }) => {
     const controls = controlsRef.current;
     if (!controls) return;
 
@@ -525,7 +539,7 @@ function CameraRig({
       controls.setPolarAngle(clamp(signal.deltaPolar + controls.getPolarAngle(), 0.52, 1.45));
 
       if (Math.abs(signal.zoomDelta) > 0.004) {
-        const scale = 1 + Math.min(0.28, Math.abs(signal.zoomDelta) * 3.2);
+        const scale = 1 + Math.min(0.14, Math.abs(signal.zoomDelta) * 2.0);
         if (signal.zoomDelta > 0) {
           controls.dollyIn(scale);
         } else {
@@ -546,48 +560,38 @@ function CameraRig({
       controls.target.z += (focusTarget[2] - controls.target.z) * 0.04;
     }
 
-    // Dwell-select when paused
-    if (isPaused) {
-      const cursor = signal.cursor;
-      const moved = Math.hypot(cursor.x - dwellRef.current.x, cursor.y - dwellRef.current.y);
+    controls.update();
 
-      if (moved > 0.04) {
-        dwellRef.current.x = cursor.x;
-        dwellRef.current.y = cursor.y;
-        dwellRef.current.time = 0;
-      } else {
-        dwellRef.current.time += delta;
+    // Handle gesture tap triggers (select / open note)
+    if (signal.gestureTrigger) {
+      const { type, cursor } = signal.gestureTrigger;
+      signal.gestureTrigger = null; // consume immediately
 
-        if (dwellRef.current.time >= 1.5) {
-          dwellRef.current.time = 0;
+      const v = new Vector3();
+      let nearest: string | null = null;
+      let nearestDist = Infinity;
 
-          const v = new Vector3();
-          let nearest: string | null = null;
-          let nearestDist = Infinity;
-
-          for (const node of layout.nodes) {
-            v.set(node.position[0], node.position[1], node.position[2]);
-            v.project(cam);
-            if (v.z > 1) continue;
-            const sx = (v.x + 1) / 2;
-            const sy = (1 - v.y) / 2;
-            const d = Math.hypot(sx - cursor.x, sy - cursor.y);
-            if (d < nearestDist) {
-              nearestDist = d;
-              nearest = node.id;
-            }
-          }
-
-          if (nearest && nearestDist < 0.12) {
-            onGestureSelect(nearest);
-          }
+      for (const node of layout.nodes) {
+        v.set(node.position[0], node.position[1], node.position[2]);
+        v.project(cam);
+        if (v.z > 1) continue;
+        const sx = (v.x + 1) / 2;
+        const sy = (1 - v.y) / 2;
+        const d = Math.hypot(sx - cursor.x, sy - cursor.y);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = node.id;
         }
       }
-    } else {
-      dwellRef.current.time = 0;
-    }
 
-    controls.update();
+      if (nearest && nearestDist < 0.15) {
+        if (type === 'select') {
+          onGestureSelect(nearest);
+        } else {
+          onOpenNote();
+        }
+      }
+    }
 
     // Zoom tier classification with hysteresis
     const dist = controls.getDistance();

@@ -382,7 +382,9 @@ function App() {
           searchMatchIds={searchMatchIds}
           handSignalRef={handNavigation.commandRef}
           isPaused={handNavigation.isPaused}
+          isGestureRunning={handNavigation.isRunning}
           onSelect={handleSelectNote}
+          onOpenNote={() => setIsFullNoteOpen((v) => !v)}
         />
       </main>
 
@@ -429,7 +431,7 @@ function App() {
         onTogglePause={handNavigation.togglePause}
       />
 
-      {handNavigation.isPaused && handNavigation.overlay.cursor ? (
+      {handNavigation.isRunning && handNavigation.overlay.cursor && handNavigation.overlay.gestureLabel === 'Pointing_Up' ? (
         <div
           className="scene-crosshair"
           style={{

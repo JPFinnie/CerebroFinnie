@@ -22,10 +22,9 @@ const GESTURE_HIGHLIGHTS: Record<string, number[]> = {
 
 const GESTURE_GUIDE = [
   { label: 'Victory', emoji: '✌', desc: 'Orbit' },
-  { label: 'Pointing_Up', emoji: '☝', desc: 'Pan' },
-  { label: 'Closed_Fist', emoji: '✊', desc: 'Zoom in' },
-  { label: 'Open_Palm', emoji: '🖐', desc: 'Zoom out' },
-  { label: 'Thumb_Up', emoji: '👍', desc: 'Pause' },
+  { label: 'Open_Palm', emoji: '🖐', desc: 'Pan' },
+  { label: 'Closed_Fist', emoji: '✊', desc: 'Zoom' },
+  { label: 'Pointing_Up', emoji: '☝', desc: 'Select / ×2 Open' },
 ];
 
 type CameraOverlayProps = {
@@ -120,9 +119,9 @@ export function CameraOverlay({
               type="button"
               className={`gesture-toolbar-btn ${isPaused ? 'gesture-toolbar-btn--active' : ''}`}
               onClick={onTogglePause}
-              title={isPaused ? 'Resume gesture control' : 'Pause (enables node dwell-select)'}
+              title={isPaused ? 'Resume gesture control' : 'Freeze orbit — gestures still select notes'}
             >
-              {isPaused ? '▶ Resume' : '⏸ Pause'}
+              {isPaused ? '▶ Resume' : '⏸ Freeze'}
             </button>
             <button
               type="button"
