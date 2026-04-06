@@ -2,7 +2,7 @@ import { Html, OrbitControls, useCursor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Vector3 } from 'three';
+import { MOUSE, Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { buildTopologyLayout } from '../lib/layouts';
 import type { HandNavigationSignal, LayoutNode, TopologyMode, VaultGraph, ZoomTier } from '../types';
@@ -35,8 +35,10 @@ type BrainSceneProps = {
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
   isPaused: boolean;
   isGestureRunning: boolean;
+  panMode: boolean;
   onSelect: (noteId: string) => void;
   onOpenNote: () => void;
+  onDeselect: () => void;
 };
 
 export function BrainScene({
@@ -48,14 +50,21 @@ export function BrainScene({
   handSignalRef,
   isPaused,
   isGestureRunning,
+  panMode,
   onSelect,
   onOpenNote,
+  onDeselect,
 }: BrainSceneProps) {
   const layout = useMemo(() => buildTopologyLayout(graph, topology), [graph, topology]);
 
   return (
     <div className="scene-shell">
-      <Canvas camera={{ position: [0, 13, 17], fov: 44 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
+      <Canvas
+        camera={{ position: [0, 13, 17], fov: 44 }}
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, alpha: true }}
+        onPointerMissed={() => onDeselect()}
+      >
         <fog attach="fog" args={['#07151d', 24, 58]} />
         <ambientLight intensity={1.1} />
 
@@ -69,6 +78,7 @@ export function BrainScene({
           handSignalRef={handSignalRef}
           isPaused={isPaused}
           isGestureRunning={isGestureRunning}
+          panMode={panMode}
           onSelect={onSelect}
           onOpenNote={onOpenNote}
         />
@@ -89,6 +99,7 @@ type SceneCoreProps = {
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
   isPaused: boolean;
   isGestureRunning: boolean;
+  panMode: boolean;
   onSelect: (noteId: string) => void;
   onOpenNote: () => void;
 };
@@ -103,6 +114,7 @@ function SceneCore({
   handSignalRef,
   isPaused,
   isGestureRunning,
+  panMode,
   onSelect,
   onOpenNote,
 }: SceneCoreProps) {
@@ -356,6 +368,7 @@ function SceneCore({
         handSignalRef={handSignalRef}
         layout={layout}
         isPaused={isPaused}
+        panMode={panMode}
         onGestureSelect={onSelect}
         onOpenNote={onOpenNote}
         zoomTierRef={zoomTierRef}
@@ -468,6 +481,7 @@ type CameraRigProps = {
   handSignalRef: React.MutableRefObject<HandNavigationSignal>;
   layout: ReturnType<typeof buildTopologyLayout>;
   isPaused: boolean;
+  panMode: boolean;
   onGestureSelect: (noteId: string) => void;
   onOpenNote: () => void;
   zoomTierRef: React.MutableRefObject<ZoomTier>;
@@ -479,6 +493,7 @@ function CameraRig({
   handSignalRef,
   layout,
   isPaused,
+  panMode,
   onGestureSelect,
   onOpenNote,
   zoomTierRef,
@@ -608,6 +623,10 @@ function CameraRig({
     }
   });
 
+  const mouseButtons = panMode
+    ? { LEFT: MOUSE.PAN, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE }
+    : { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN };
+
   return (
     <OrbitControls
       ref={controlsRef}
@@ -619,6 +638,7 @@ function CameraRig({
       maxPolarAngle={1.3}
       rotateSpeed={0.72}
       zoomSpeed={0.82}
+      mouseButtons={mouseButtons}
     />
   );
 }

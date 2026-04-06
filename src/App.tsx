@@ -27,6 +27,7 @@ function App() {
   const [isFullNoteOpen, setIsFullNoteOpen] = useState(false);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [isInspectorPanelOpen, setIsInspectorPanelOpen] = useState(false);
+  const [panMode, setPanMode] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(!isSupabaseRuntimeEnabled);
   const [isGraphLoading, setIsGraphLoading] = useState(true);
@@ -207,6 +208,12 @@ function App() {
     });
   }
 
+  function handleDeselect() {
+    startTransition(() => {
+      setSelectedNoteId(null);
+    });
+  }
+
   function handleOpenFullNote() {
     setIsFullNoteOpen(true);
   }
@@ -358,6 +365,14 @@ function App() {
         <div className="header-actions">
           <button
             type="button"
+            className={panMode ? 'panel-toggle active' : 'panel-toggle'}
+            title="Toggle between orbit and pan mode for left-click drag"
+            onClick={() => setPanMode((current) => !current)}
+          >
+            {panMode ? '✋ Pan' : '🔄 Orbit'}
+          </button>
+          <button
+            type="button"
             className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
             onClick={() => setIsControlPanelOpen((current) => !current)}
           >
@@ -383,8 +398,10 @@ function App() {
           handSignalRef={handNavigation.commandRef}
           isPaused={handNavigation.isPaused}
           isGestureRunning={handNavigation.isRunning}
+          panMode={panMode}
           onSelect={handleSelectNote}
           onOpenNote={() => setIsFullNoteOpen((v) => !v)}
+          onDeselect={handleDeselect}
         />
       </main>
 
