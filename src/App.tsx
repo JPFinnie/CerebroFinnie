@@ -369,21 +369,23 @@ function App() {
             title="Toggle between orbit and pan mode for left-click drag"
             onClick={() => setPanMode((current) => !current)}
           >
-            {panMode ? '✋ Pan' : '🔄 Orbit'}
+            {panMode ? 'Pan' : 'Orbit'}
           </button>
           <button
             type="button"
             className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            title={isControlPanelOpen ? 'Hide controls panel' : 'Show controls panel'}
             onClick={() => setIsControlPanelOpen((current) => !current)}
           >
-            {isControlPanelOpen ? 'Hide Controls' : 'Show Controls'}
+            Controls
           </button>
           <button
             type="button"
             className={isInspectorPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            title={isInspectorPanelOpen ? 'Hide note inspector' : 'Show note inspector'}
             onClick={() => setIsInspectorPanelOpen((current) => !current)}
           >
-            {isInspectorPanelOpen ? 'Hide Note' : 'Show Note'}
+            Note
           </button>
         </div>
       </header>
