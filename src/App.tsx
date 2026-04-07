@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import './App.css';
+import { AboutModal } from './components/AboutModal';
 import { AuthScreen } from './components/AuthScreen';
 import { BrainScene } from './components/BrainScene';
 import { CameraOverlay } from './components/CameraOverlay';
@@ -27,6 +28,7 @@ function App() {
   const [isFullNoteOpen, setIsFullNoteOpen] = useState(false);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [isInspectorPanelOpen, setIsInspectorPanelOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [panMode, setPanMode] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(!isSupabaseRuntimeEnabled);
@@ -369,21 +371,31 @@ function App() {
             title="Toggle between orbit and pan mode for left-click drag"
             onClick={() => setPanMode((current) => !current)}
           >
-            {panMode ? '✋ Pan' : '🔄 Orbit'}
+            {panMode ? 'Pan' : 'Orbit'}
           </button>
           <button
             type="button"
             className={isControlPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            title={isControlPanelOpen ? 'Hide controls panel' : 'Show controls panel'}
             onClick={() => setIsControlPanelOpen((current) => !current)}
           >
-            {isControlPanelOpen ? 'Hide Controls' : 'Show Controls'}
+            Controls
           </button>
           <button
             type="button"
             className={isInspectorPanelOpen ? 'panel-toggle active' : 'panel-toggle'}
+            title={isInspectorPanelOpen ? 'Hide note inspector' : 'Show note inspector'}
             onClick={() => setIsInspectorPanelOpen((current) => !current)}
           >
-            {isInspectorPanelOpen ? 'Hide Note' : 'Show Note'}
+            Note
+          </button>
+          <button
+            type="button"
+            className={isAboutOpen ? 'panel-toggle active' : 'panel-toggle'}
+            title="How this works and why it exists"
+            onClick={() => setIsAboutOpen((current) => !current)}
+          >
+            About
           </button>
         </div>
       </header>
@@ -438,6 +450,8 @@ function App() {
       {selectedNote && isFullNoteOpen ? (
         <NoteModal key={selectedNote.id} note={selectedNote} onClose={handleCloseFullNote} />
       ) : null}
+
+      {isAboutOpen ? <AboutModal onClose={() => setIsAboutOpen(false)} /> : null}
 
       <CameraOverlay
         videoRef={handNavigation.videoRef}

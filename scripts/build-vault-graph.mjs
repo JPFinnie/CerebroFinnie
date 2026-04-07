@@ -38,6 +38,43 @@ const DEFAULT_COLORS = [
   '#3d8f92',
 ];
 
+// Map deeper sub-paths to friendly "cluster" labels so multi-level content (like
+// pm-brain-main) gets meaningful groupings instead of one giant bucket. Sorted
+// by depth descending so the deepest match wins.
+const FOLDER_ALIASES = new Map([
+  ['pm-brain-main/02-Methods-and-Tools/2.0-Foundations', 'PM • Foundations'],
+  ['pm-brain-main/02-Methods-and-Tools/2.1-Strategy', 'PM • Strategy'],
+  ['pm-brain-main/02-Methods-and-Tools/2.2-Discovery', 'PM • Discovery'],
+  ['pm-brain-main/02-Methods-and-Tools/2.3-Execution', 'PM • Execution'],
+  ['pm-brain-main/02-Methods-and-Tools/2.4-Communication', 'PM • Communication'],
+  ['pm-brain-main/02-Methods-and-Tools/0-Template-Structure', 'PM • Templates'],
+  ['pm-brain-main/02-Methods-and-Tools', 'PM • Methods'],
+  ['pm-brain-main/00-Meta', 'PM • Meta'],
+  ['pm-brain-main/01-Company-Context', 'PM • Company'],
+  ['pm-brain-main/03-Research-Artifacts', 'PM • Research'],
+  ['pm-brain-main/04-Initiatives', 'PM • Initiatives'],
+  ['pm-brain-main/docs', 'PM • Docs'],
+  ['pm-brain-main', 'PM • Core'],
+]);
+
+// Dedicated palette so PM clusters get visually distinct, cohesive color bands
+// instead of cycling through DEFAULT_COLORS by insertion order.
+const PM_PALETTE = new Map([
+  ['PM • Meta', '#b39ddb'],
+  ['PM • Company', '#ffb74d'],
+  ['PM • Foundations', '#4db6ac'],
+  ['PM • Strategy', '#7986cb'],
+  ['PM • Discovery', '#81c784'],
+  ['PM • Execution', '#e57373'],
+  ['PM • Communication', '#f06292'],
+  ['PM • Templates', '#9fa8da'],
+  ['PM • Methods', '#64b5f6'],
+  ['PM • Research', '#a1887f'],
+  ['PM • Initiatives', '#ffd54f'],
+  ['PM • Docs', '#90a4ae'],
+  ['PM • Core', '#ba68c8'],
+]);
+
 const WIKILINK_PATTERN = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
 const INLINE_TAG_PATTERN = /(^|\s)#([A-Za-z0-9_/-]+)/g;
 
@@ -66,7 +103,7 @@ async function main() {
       id: notePath,
       title,
       path: notePath,
-      folder: notePath.includes('/') ? notePath.split('/')[0] : 'Vault Root',
+      folder: deriveFolder(notePath),
       aliases,
       tags,
       rawLinks: extractLinks(parsed.content),
@@ -111,10 +148,63 @@ async function main() {
     incomingCounts.set(edge.target, (incomingCounts.get(edge.target) ?? 0) + 1);
   }
 
+  // Synthesize sibling edges for orphan-heavy clusters (e.g. pm-brain-main)
+  // so the force layout actually clusters them visually instead of dropping
+  // 250+ disconnected nodes into one undifferentiated cloud.
+  const folderBuckets = new Map();
+  for (const note of notes) {
+    const parent = path.posix.dirname(note.path);
+    if (!folderBuckets.has(parent)) {
+      folderBuckets.set(parent, []);
+    }
+    folderBuckets.get(parent).push(note);
+  }
+
+  for (const [, bucket] of folderBuckets) {
+    if (bucket.length < 3) continue;
+
+    // Only synthesize edges when the folder is mostly orphaned — otherwise the
+    // existing wikilink graph is already doing its job.
+    const orphanCount = bucket.filter(
+      (note) => note.rawLinks.length === 0 && (incomingCounts.get(note.id) ?? 0) === 0,
+    ).length;
+    if (orphanCount / bucket.length < 0.6) continue;
+
+    const sorted = [...bucket].sort((left, right) => left.path.localeCompare(right.path));
+    for (let index = 0; index < sorted.length; index += 1) {
+      const source = sorted[index];
+      // Link to the next 2 siblings — produces a loose ring per folder.
+      for (let offset = 1; offset <= 2; offset += 1) {
+        const target = sorted[(index + offset) % sorted.length];
+        if (target.id === source.id) continue;
+        const edgeKey = `${source.id}=>${target.id}`;
+        if (seenEdges.has(edgeKey)) continue;
+        seenEdges.add(edgeKey);
+        resolvedEdges.push({ source: source.id, target: target.id, weight: 0.35, kind: 'sibling' });
+        source.outgoing.push(target.id);
+        incomingCounts.set(target.id, (incomingCounts.get(target.id) ?? 0) + 1);
+      }
+    }
+  }
+
+  for (const note of notes) {
+    note.outgoing = Array.from(new Set(note.outgoing)).sort();
+  }
+
   const groupDefinitions = buildGroupDefinitions(graphSettings);
   const folderColorMap = new Map();
+  const distinctFolders = Array.from(new Set(notes.map((note) => note.folder)));
+  // Sort so PM groups get assigned first (and keep their dedicated palette),
+  // then other folders get cycled through DEFAULT_COLORS in stable order.
+  const nonPmFolders = distinctFolders.filter((folder) => !PM_PALETTE.has(folder)).sort();
 
-  for (const [index, folder] of Array.from(new Set(notes.map((note) => note.folder))).entries()) {
+  for (const folder of distinctFolders) {
+    if (PM_PALETTE.has(folder)) {
+      folderColorMap.set(folder, PM_PALETTE.get(folder));
+    }
+  }
+
+  for (const [index, folder] of nonPmFolders.entries()) {
     folderColorMap.set(folder, DEFAULT_COLORS[index % DEFAULT_COLORS.length]);
   }
 
@@ -437,6 +527,25 @@ function findBestGroup(tags, groups) {
   return groups
     .filter((group) => tags.some((tag) => tag === group.key || tag.startsWith(`${group.key}/`)))
     .sort((left, right) => right.key.length - left.key.length)[0];
+}
+
+function deriveFolder(notePath) {
+  if (!notePath.includes('/')) {
+    return 'Vault Root';
+  }
+
+  const segments = notePath.split('/');
+  // Try the deepest folder prefix first so e.g. `pm-brain-main/02-Methods-and-Tools/2.1-Strategy/...`
+  // matches `PM • Strategy` before falling back to `PM • Methods` or `PM • Core`.
+  for (let depth = segments.length - 1; depth >= 1; depth -= 1) {
+    const prefix = segments.slice(0, depth).join('/');
+    const alias = FOLDER_ALIASES.get(prefix);
+    if (alias) {
+      return alias;
+    }
+  }
+
+  return segments[0];
 }
 
 function normalizePath(value) {
