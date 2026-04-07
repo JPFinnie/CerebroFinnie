@@ -1035,6 +1035,55 @@
   border-top: 0;
 }
 
+.about-shell section {
+  margin-bottom: 1.4rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid rgba(255, 243, 222, 0.08);
+}
+
+.about-shell section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.about-shell h3 {
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: rgba(255, 218, 156, 0.92);
+  margin: 0 0 0.55rem;
+}
+
+.about-shell p,
+.about-shell li {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: rgba(232, 226, 215, 0.88);
+}
+
+.about-shell ul,
+.about-shell ol {
+  margin: 0.4rem 0 0.6rem 1rem;
+  padding: 0;
+}
+
+.about-shell li {
+  margin-bottom: 0.4rem;
+}
+
+.about-shell code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 0.08rem 0.32rem;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 0.3rem;
+  color: rgba(255, 230, 188, 0.92);
+}
+
+.about-shell strong {
+  color: rgba(255, 244, 224, 0.96);
+}
+
 .raw-note-shell {
   margin: 0;
   padding: 0.85rem;
