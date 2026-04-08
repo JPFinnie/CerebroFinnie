@@ -60,12 +60,12 @@ export function BrainScene({
   return (
     <div className="scene-shell">
       <Canvas
-        camera={{ position: [0, 13, 17], fov: 44 }}
+        camera={{ position: [0, 2, 18], fov: 44 }}
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: true }}
         onPointerMissed={() => onDeselect()}
       >
-        <fog attach="fog" args={['#07151d', 24, 58]} />
+        <fog attach="fog" args={['#07151d', 28, 72]} />
         <ambientLight intensity={1.1} />
 
         <SceneCore
@@ -236,13 +236,18 @@ function SceneCore({
     }
     return Array.from(groups.entries()).map(([key, nodes]) => {
       const cx = nodes.reduce((s, n) => s + n.position[0], 0) / nodes.length;
+      const cy = nodes.reduce((s, n) => s + n.position[1], 0) / nodes.length;
       const cz = nodes.reduce((s, n) => s + n.position[2], 0) / nodes.length;
       const radius =
-        Math.max(2.5, ...nodes.map((n) => Math.hypot(n.position[0] - cx, n.position[2] - cz))) * 1.4;
+        Math.max(
+          2.8,
+          ...nodes.map((n) =>
+            Math.hypot(n.position[0] - cx, n.position[1] - cy, n.position[2] - cz),
+          ),
+        ) * 1.35;
       const color = nodes[0]?.color ?? '#5599bb';
-      // Cluster label: highest-importance node title in this group
       const topNode = nodes.reduce((best, n) => (n.importance > best.importance ? n : best), nodes[0]!);
-      return { key, cx, cz, radius, color, label: topNode.group || key, cy: 3.5 };
+      return { key, cx, cy, cz, radius, color, label: topNode.group || key };
     });
   }, [layout.nodes, topology]);
 
@@ -289,6 +294,7 @@ function SceneCore({
         <ClusterGlow
           key={r.key}
           cx={r.cx}
+          cy={r.cy}
           cz={r.cz}
           radius={r.radius}
           color={r.color}
@@ -334,7 +340,7 @@ function SceneCore({
       {zoomTier === 'atlas' && clusterRegions.map((r) => (
         <Html
           key={`cluster-label-${r.key}`}
-          position={[r.cx, r.cy, r.cz]}
+          position={[r.cx, r.cy + r.radius * 0.34, r.cz]}
           center
           className="node-label"
           distanceFactor={10}
@@ -383,6 +389,7 @@ function SceneCore({
 
 type ClusterGlowProps = {
   cx: number;
+  cy: number;
   cz: number;
   radius: number;
   color: string;
@@ -390,29 +397,49 @@ type ClusterGlowProps = {
   show: boolean;
 };
 
-function ClusterGlow({ cx, cz, radius, color, glowTexture, show }: ClusterGlowProps) {
-  const materialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+function ClusterGlow({ cx, cy, cz, radius, color, glowTexture, show }: ClusterGlowProps) {
+  const materialRefs = useRef<Array<THREE.SpriteMaterial | null>>([]);
+  const phase = useRef((Math.abs(cx) + Math.abs(cy) + Math.abs(cz)) * 0.07);
+  const layers = useMemo(
+    () => [
+      { scale: radius * 3.2, offset: [0, 0, 0] as const },
+      { scale: radius * 2.35, offset: [radius * 0.18, radius * 0.08, -radius * 0.16] as const },
+      { scale: radius * 1.75, offset: [-radius * 0.16, -radius * 0.12, radius * 0.14] as const },
+    ],
+    [radius],
+  );
 
-  useFrame(() => {
-    if (materialRef.current) {
-      const target = show ? 0.08 : 0;
-      materialRef.current.opacity += (target - materialRef.current.opacity) * 0.05;
-    }
+  useFrame(({ clock }) => {
+    materialRefs.current.forEach((material, index) => {
+      if (!material) {
+        return;
+      }
+
+      const shimmer = Math.sin(clock.elapsedTime * 0.5 + phase.current + index * 0.9) * 0.014;
+      const baseOpacity = show ? 0.11 - index * 0.026 : 0;
+      const target = Math.max(0, baseOpacity + shimmer);
+      material.opacity += (target - material.opacity) * 0.08;
+    });
   });
 
   return (
-    <mesh position={[cx, 0.05, cz]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[radius * 2, radius * 2]} />
-      <meshBasicMaterial
-        ref={materialRef}
-        map={glowTexture}
-        color={color}
-        transparent
-        opacity={0}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+    <group position={[cx, cy, cz]}>
+      {layers.map((layer, index) => (
+        <sprite key={`${cx}-${cy}-${cz}-${index}`} position={layer.offset} scale={[layer.scale, layer.scale, 1]}>
+          <spriteMaterial
+            ref={(material) => {
+              materialRefs.current[index] = material;
+            }}
+            map={glowTexture}
+            color={color}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </sprite>
+      ))}
+    </group>
   );
 }
 
@@ -505,11 +532,13 @@ function CameraRig({
 
   useEffect(() => {
     const controls = controlsRef.current;
-    const targetHeight = Math.max(1.35, layout.radius * 0.085);
-    const distance = Math.max(10.5, layout.radius * 1.05);
-    const height = Math.max(7.2, layout.radius * 0.65);
-    const target = new Vector3(layout.center[0], targetHeight, layout.center[2]);
-    const position = new Vector3(layout.center[0], height, layout.center[2] + distance);
+    const distance = Math.max(11.5, layout.radius * 1.18);
+    const target = new Vector3(layout.center[0], layout.center[1], layout.center[2]);
+    const position = new Vector3(
+      layout.center[0] + layout.radius * 0.42,
+      layout.center[1] + Math.max(2.4, layout.radius * 0.3),
+      layout.center[2] + distance,
+    );
 
     camera.position.copy(position);
     camera.lookAt(target);
@@ -517,7 +546,7 @@ function CameraRig({
     if (controls) {
       controls.target.copy(target);
       controls.minDistance = 5;
-      controls.maxDistance = 40;
+      controls.maxDistance = Math.max(40, layout.radius * 4.2);
       controls.update();
     }
   }, [camera, layout.center, layout.radius]);
@@ -551,7 +580,7 @@ function CameraRig({
     // Orbit + zoom (when not paused)
     if (signal.active && !isPaused) {
       controls.setAzimuthalAngle(controls.getAzimuthalAngle() - signal.deltaAzimuth);
-      controls.setPolarAngle(clamp(signal.deltaPolar + controls.getPolarAngle(), 0.52, 1.45));
+      controls.setPolarAngle(clamp(signal.deltaPolar + controls.getPolarAngle(), 0.24, Math.PI - 0.24));
 
       if (Math.abs(signal.zoomDelta) > 0.004) {
         const scale = 1 + Math.min(0.14, Math.abs(signal.zoomDelta) * 2.0);
@@ -634,8 +663,8 @@ function CameraRig({
       dampingFactor={0.09}
       minDistance={5}
       maxDistance={40}
-      minPolarAngle={0.72}
-      maxPolarAngle={1.3}
+      minPolarAngle={0.24}
+      maxPolarAngle={Math.PI - 0.24}
       rotateSpeed={0.72}
       zoomSpeed={0.82}
       mouseButtons={mouseButtons}

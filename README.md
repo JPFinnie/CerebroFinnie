@@ -1,136 +1,99 @@
 # CerebroFinnie
 
-A 3D topographical knowledge graph viewer for Obsidian vaults — navigate your second brain as an interactive terrain map with hand-gesture controls and private mobile access.
+CerebroFinnie is a 3D knowledge graph viewer for Obsidian vaults. It turns a local Markdown vault into a private, topology-driven graph with Louvain communities, optional semantic edges, gesture navigation, and a public methodology guide at `https://cerebro-finnie.vercel.app/docs`.
 
-## Why we built it
+## Why it exists
 
-Obsidian is a powerful tool for building a personal knowledge base, but its built-in graph view is flat, hard to navigate at scale, and doesn't convey the relative weight or topology of your ideas. We wanted a way to *experience* a knowledge vault spatially — to see which notes are central, how clusters of thought form, and to literally reach into the graph and move through it.
+Obsidian's built-in graph is useful, but it gets hard to read once a vault grows. CerebroFinnie is meant to make the structure legible again:
 
-CerebroFinnie turns a vault into a 3D landscape where note importance becomes elevation, link density becomes proximity, and topic clusters become visible terrain. Hand-gesture navigation lets you orbit, pan, zoom, and select notes without touching a keyboard. A private Supabase-backed runtime means you can explore your vault from your phone without ever exposing your notes publicly.
+- note importance becomes elevation
+- edge density becomes proximity
+- communities emerge from topology instead of folder names
+- semantic relationships can be layered in on top of explicit wikilinks
+- the same snapshot can be explored privately on desktop or mobile
 
-## Project breakdown
+The result is a viewer that treats a vault more like a map than a file tree.
 
-### Architecture at a glance
+## Architecture
 
-The project has two distinct layers:
+The project has two layers:
 
-1. **Ingestion** — a Node.js pipeline that reads an Obsidian vault from the local filesystem, parses every markdown note, resolves wikilinks into graph edges, computes importance scores, and emits a single `vault-graph.json` snapshot.
-2. **Visualization** — a React + Three.js web app that consumes the snapshot and renders it as an interactive 3D scene with search, filtering, note inspection, and gesture-based camera control.
+1. Ingestion. A Node.js pipeline reads the vault from disk, parses Markdown, resolves links, imports optional semantic edges, detects communities, and writes a single snapshot file.
+2. Visualization. A React + Three.js app reads that snapshot and renders it as an interactive 3D scene with search, filtering, note inspection, and hand-gesture controls.
 
-The browser never touches the filesystem directly. This separation keeps the runtime fast and makes deployment flexible — you can serve the snapshot locally, commit it, host it at a URL, or deliver it through an authenticated API.
+The browser never reads the vault directly. That keeps deployment flexible: you can use a local snapshot, a remote snapshot URL, or private Supabase-backed runtime fetches.
 
-### Ingestion pipeline
+## Ingestion pipeline
 
-`scripts/build-vault-graph.mjs` is the retrieval boundary. It:
+The main builder is [`scripts/build-vault-graph.mjs`](scripts/build-vault-graph.mjs). It:
 
-- Resolves the vault root from `CEREBRO_VAULT_PATH`, `cerebro.config.json`, or the nearest parent containing `.obsidian`
-- Walks all markdown files, parsing frontmatter (tags, aliases, dates) and body content with `gray-matter`
-- Extracts wikilinks and resolves them by path, basename, or alias into directed graph edges
-- Computes an **importance score** for each note based on incoming links, outgoing links, tag count, and word count
-- Reads Obsidian's `graph.json` color groups for cluster assignment
-- Outputs `public/data/vault-graph.json` with full note metadata, edges, groups, and content
+- resolves the vault root from `CEREBRO_VAULT_PATH`, `cerebro.config.json`, or the nearest parent folder containing `.obsidian`
+- walks all Markdown notes and parses frontmatter with `gray-matter`
+- uses a SHA256 cache in `.cerebro-cache/` so unchanged files are not reparsed on every run
+- resolves wikilinks by path, basename, or alias
+- optionally imports graphify-style semantic edges from any `graphify-out/graph.json` found inside the vault
+- synthesizes low-weight sibling edges for orphan-heavy folders so disconnected note runs still layout coherently
+- runs Louvain community detection with `graphology` and `graphology-communities-louvain`
+- applies Obsidian graph color groups only as explicit manual overrides on top of topology-based communities
+- computes importance scores from incoming links, outgoing links, tag count, and word count
+- writes `public/data/vault-graph.json`
 
-### 3D visualization
+Supporting scripts:
 
-`src/components/BrainScene.tsx` renders the knowledge graph using Three.js via React Three Fiber:
+- [`scripts/import-graphify-edges.mjs`](scripts/import-graphify-edges.mjs): merges graphify-compatible semantic edges into the main graph
+- [`scripts/generate-graphify-json.mjs`](scripts/generate-graphify-json.mjs): creates a graphify-compatible `graphify-out/graph.json` inside the vault using a repeatable title-reference plus TF-IDF similarity pass
+- [`scripts/cache-manager.mjs`](scripts/cache-manager.mjs): content-hash cache helpers
+- [`scripts/publish-snapshot.mjs`](scripts/publish-snapshot.mjs): uploads the latest snapshot to private Supabase Storage
 
-- Notes appear as spheres — larger and higher for more important notes
-- Edges connect linked notes as lines
-- Color coding reflects folder or tag-based groups, with translucent glow overlays for clusters
-- Click a node to inspect it; double-click to read the full note
+## Visualization
 
-### Three topology modes
+The React app renders the snapshot with React Three Fiber and Drei:
 
-The app offers three layout algorithms (in `src/lib/layouts.ts`) that arrange the graph differently:
+- notes render as spheres
+- edges render as lines
+- topology communities drive color grouping by default
+- search and filtering live in the HUD
+- note details open in the inspector and modal
+- MediaPipe hand gestures provide orbit, pan, zoom, and note selection
 
-| Mode | Concept | Layout |
-|------|---------|--------|
-| **Centralized** | Hub-and-spoke | Radiates outward from the highest-importance note |
-| **Clustered** (default) | Force-directed grouping | Notes cluster by topic with organic spacing |
-| **Distributed** | Flat peer network | Self-organizing layout emphasizing equal connectivity |
+The app also includes a public docs page at `/docs`, rendered from [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) through [`src/pages/DocsPage.tsx`](src/pages/DocsPage.tsx).
 
-### Hand-gesture navigation
+## Semantic edges
 
-`src/hooks/useHandNavigation.ts` uses MediaPipe's gesture recognition model running entirely in the browser — no server inference required:
+Wikilinks only capture explicit note-to-note links. CerebroFinnie can also merge semantic edges when a compatible `graphify-out/graph.json` exists inside the vault.
 
-| Gesture | Action |
-|---------|--------|
-| Victory (V-hand) | Orbit the camera |
-| Open palm | Pan the camera |
-| Closed fist | Zoom in/out |
-| Point up | Position cursor to select notes |
-| Double-point | Open the selected note |
+There are two supported paths:
 
-A camera overlay shows the video feed with hand landmarks, gesture confidence, and cursor position.
+1. Repo-local bootstrap:
 
-### Note inspection UI
-
-- **Search bar** — full-text search across titles, paths, tags, and excerpts
-- **Left panel** (`ControlHud.tsx`) — topology switcher, group/folder filters, matching notes list, graph stats
-- **Right panel** (`NoteInspector.tsx`) — selected note metadata: importance score, link counts, word count, excerpt
-- **Modal view** (`NoteModal.tsx`) — full rendered markdown with a toggle for raw source
-
-### Private mobile access with Supabase
-
-For on-the-go access without exposing your notes:
-
-1. Run `npm run publish-snapshot` locally to upload the vault snapshot to a private Supabase Storage bucket
-2. The deployed app presents a login screen (`AuthScreen.tsx`) using Supabase Auth (magic-link or password)
-3. After sign-in, the app calls `/api/snapshot` — a serverless function that verifies the bearer token and streams the snapshot from private storage
-4. The browser caches the snapshot locally for fast repeat access
-5. An email allowlist in the API function restricts who can access the data
-
-### Tech stack
-
-- **React 19** with TypeScript
-- **Three.js** / React Three Fiber / Drei for 3D rendering
-- **MediaPipe Tasks Vision** for client-side hand tracking
-- **Vite** for build tooling
-- **Supabase** for auth and private storage
-- **gray-matter** for frontmatter parsing
-- **react-markdown** with remark-gfm for note rendering
-- **Vercel** for deployment (serverless functions + static hosting)
-
-## How it works end-to-end
-
-### Local development
-
-```
-Obsidian vault on disk
-        │
-        ▼
-  npm run dev
-        │
-        ├── runs build-vault-graph.mjs
-        │       → parses notes, resolves links, computes scores
-        │       → writes public/data/vault-graph.json
-        │
-        └── starts Vite dev server
-                → browser loads vault-graph.json
-                → renders 3D scene
-                → user explores with mouse or hand gestures
+```bash
+npm run generate-semantic-json
 ```
 
-### Remote deployment (Supabase mode)
+This writes `pm-brain-main/graphify-out/graph.json` inside the configured vault.
 
+2. External graphify-compatible output:
+
+- use the vendored graphify modules in [`tools/graphify`](tools/graphify)
+- or drop in any compatible `graphify-out/graph.json` generated elsewhere
+
+After semantic JSON exists, rebuild the snapshot:
+
+```bash
+node scripts/build-vault-graph.mjs
 ```
-Obsidian vault on disk
-        │
-        ▼
-  npm run publish-snapshot
-        │
-        └── uploads vault-graph.json to private Supabase bucket
 
-        ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+The importer tags those edges as `kind: "semantic"` and carries through `confidence` values.
 
-  User opens deployed app on phone/laptop
-        │
-        ├── Supabase Auth login (magic link)
-        ├── App calls /api/snapshot with bearer token
-        ├── Server verifies token, downloads from Supabase Storage
-        ├── Browser receives and caches snapshot
-        └── 3D scene renders with full vault data
-```
+## Public methodology docs
+
+The standalone implementation guide is available in three forms:
+
+- public URL: `https://cerebro-finnie.vercel.app/docs`
+- Markdown source: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md)
+- PDF export: `npx md-to-pdf docs/METHODOLOGY.md`
+
+The docs are meant for colleagues who need to reproduce the system without GitHub access.
 
 ## Setup
 
@@ -140,105 +103,141 @@ Install dependencies:
 npm install
 ```
 
-## Local vault mode
+Point the repo at your vault with either:
 
-Point the app at your vault using one of these:
+1. `CEREBRO_VAULT_PATH`
+2. a local `cerebro.config.json`
 
-1. Set `CEREBRO_VAULT_PATH`
-2. Copy `cerebro.config.example.json` to `cerebro.config.json` and edit `vaultPath`
+Example config:
 
-Then run:
-
-```bash
-npm run dev
+```json
+{
+  "vaultPath": "../../CerebroAtlas",
+  "excludeDirectories": [".cursor"],
+  "excludeFiles": ["03-Snapshots.md"]
+}
 ```
 
-Useful commands:
+## Common commands
 
 ```bash
-npm run ingest             # Generate vault graph from local vault
-npm run prepare-data       # Smart data prep for builds
-npm run publish-snapshot   # Upload snapshot to Supabase Storage
-npm run build              # Production build
-npm run lint               # Run ESLint
+npm run ingest                  # Build public/data/vault-graph.json from the local vault
+npm run generate-semantic-json # Write graphify-compatible semantic JSON into the vault
+npm run prepare-data           # Build-time snapshot preparation for production builds
+npm run publish-snapshot       # Upload snapshot to private Supabase Storage
+npm run dev                    # Local dev server
+npm run build                  # Production build
+npm run lint                   # ESLint
 ```
 
-## Private mobile mode with Supabase
+## End-to-end flow
 
-Copy `.env.example` to `.env.local` and set:
+### Local development
+
+```text
+Obsidian vault on disk
+        |
+        v
+  npm run dev
+        |
+        +-- build-vault-graph.mjs
+        |     -> parse notes
+        |     -> resolve links
+        |     -> merge optional semantic edges
+        |     -> detect communities
+        |     -> write public/data/vault-graph.json
+        |
+        +-- start Vite dev server
+              -> browser loads snapshot
+              -> renders 3D scene
+```
+
+### Private remote access
+
+```text
+Obsidian vault on disk
+        |
+        v
+  npm run publish-snapshot
+        |
+        +-- upload latest snapshot to private Supabase bucket
+
+  User opens deployed app
+        |
+        +-- sign in with Supabase Auth
+        +-- app calls /api/snapshot
+        +-- server verifies bearer token
+        +-- snapshot is streamed from private storage
+        +-- browser caches and renders the graph
+```
+
+## Supabase runtime mode
+
+For private mobile access, set these environment variables:
 
 - `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY`
 - `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
+- `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`
 - `VITE_CEREBRO_SITE_URL`
 - optional `SUPABASE_SNAPSHOT_BUCKET`
 - optional `SUPABASE_SNAPSHOT_PATH`
 - optional `CEREBRO_ALLOWED_EMAIL`
 
-Recommended Supabase setup:
+Recommended setup:
 
-1. Enable email auth and use magic-link login for your email
-2. In Supabase Auth URL Configuration, set `Site URL` to your production CerebroFinnie URL instead of `http://localhost:3000`
-3. Add redirect URLs for:
-   - your production URL
-   - your Vercel preview URL pattern
-   - local development, such as `http://localhost:5173/**`
-4. Keep the snapshot bucket private
-5. Set the same env vars in Vercel for the deployed app
-6. Run `npm run publish-snapshot` on your own machine whenever you want to refresh the remote snapshot
+1. Enable email auth in Supabase.
+2. Keep the snapshot bucket private.
+3. Set the same env vars in Vercel for the deployed app.
+4. Run `npm run publish-snapshot` from your own machine whenever you want to refresh the live private snapshot.
 
-At runtime, the app signs in through Supabase Auth, calls `/api/snapshot`, and that server function verifies the Supabase bearer token before downloading the latest snapshot from private Storage.
+The authenticated runtime endpoint is [`api/snapshot.js`](api/snapshot.js).
 
-## Retrieval model
+## Deployment notes
 
-The app does not read Obsidian through an API. It reads the vault directly from the local filesystem during the ingestion step.
+`npm run build` runs `npm run prepare-data` first. The build behaves like this:
 
-Current pipeline:
+1. If Supabase runtime env vars are present, it skips local vault ingestion and expects runtime snapshot fetches.
+2. Otherwise it tries local vault ingestion.
+3. Otherwise it uses an existing `public/data/vault-graph.json`.
+4. Otherwise it downloads from `CEREBRO_SNAPSHOT_URL`.
 
-1. Resolve the vault root from `CEREBRO_VAULT_PATH`, `cerebro.config.json`, or an enclosing folder that contains `.obsidian`
-2. Walk the markdown files in that vault
-3. Parse frontmatter, tags, aliases, wikilinks, excerpts, and full markdown
-4. Generate `public/data/vault-graph.json`
-5. Either load that generated graph client-side in the viewer, or upload it as a private snapshot for remote access
+That means hosted builds cannot read a local Windows vault path directly. For Vercel, use a prepared snapshot or Supabase runtime mode.
 
-`public/data/vault-graph.json` is ignored by git because it contains the note contents.
+The repo includes [`vercel.json`](vercel.json) with a filesystem-first SPA fallback so `/docs` works without breaking static assets or API routes.
 
-## Deployment modes
+## Tech stack
 
-### Local development
-
-- `npm run dev` requires local vault access
-- it runs `npm run ingest` directly
-
-### Remote builds like Vercel
-
-`npm run build` now runs `npm run prepare-data`, which behaves like this:
-
-1. If `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are present, it skips build-time snapshot work and expects runtime fetches from Supabase
-2. Otherwise it tries local vault ingestion
-3. Otherwise it uses an existing `public/data/vault-graph.json`
-4. Otherwise it downloads from `CEREBRO_SNAPSHOT_URL`
-
-That means a Vercel deployment cannot read your laptop vault directly. It needs one of these:
-
-- a committed snapshot file at `public/data/vault-graph.json`
-- a remotely reachable snapshot URL in `CEREBRO_SNAPSHOT_URL`
-- or Supabase runtime mode enabled with the required env vars
-
-Do not set `CEREBRO_VAULT_PATH` on Vercel to a local Windows path. The build machine cannot access your laptop filesystem.
+- React 19
+- TypeScript
+- Vite
+- Three.js
+- React Three Fiber
+- Drei
+- MediaPipe Tasks Vision
+- Supabase
+- graphology
+- graphology-communities-louvain
+- gray-matter
+- react-markdown
+- remark-gfm
+- Vercel
 
 ## Main files
 
-- `scripts/build-vault-graph.mjs` — local vault ingestion
-- `scripts/publish-snapshot.mjs` — local publish step to private Supabase Storage
-- `api/snapshot.js` — authenticated snapshot fetch for the deployed app
-- `src/App.tsx` — app shell and note selection state
-- `src/components/BrainScene.tsx` — Three.js terrain and graph rendering
-- `src/components/ControlHud.tsx` — search, grouping, and camera controls
-- `src/components/NoteInspector.tsx` — side inspector
-- `src/components/NoteModal.tsx` — full-note view
-- `src/components/AuthScreen.tsx` — Supabase login screen
-- `src/hooks/useHandNavigation.ts` — MediaPipe gesture control
-- `src/lib/layouts.ts` — topology layout algorithms
-- `docs/architecture.md` — architecture notes and future direction
+- [`scripts/build-vault-graph.mjs`](scripts/build-vault-graph.mjs)
+- [`scripts/import-graphify-edges.mjs`](scripts/import-graphify-edges.mjs)
+- [`scripts/generate-graphify-json.mjs`](scripts/generate-graphify-json.mjs)
+- [`scripts/cache-manager.mjs`](scripts/cache-manager.mjs)
+- [`scripts/publish-snapshot.mjs`](scripts/publish-snapshot.mjs)
+- [`api/snapshot.js`](api/snapshot.js)
+- [`src/App.tsx`](src/App.tsx)
+- [`src/components/BrainScene.tsx`](src/components/BrainScene.tsx)
+- [`src/components/ControlHud.tsx`](src/components/ControlHud.tsx)
+- [`src/components/NoteInspector.tsx`](src/components/NoteInspector.tsx)
+- [`src/components/NoteModal.tsx`](src/components/NoteModal.tsx)
+- [`src/components/AboutModal.tsx`](src/components/AboutModal.tsx)
+- [`src/hooks/useHandNavigation.ts`](src/hooks/useHandNavigation.ts)
+- [`src/pages/DocsPage.tsx`](src/pages/DocsPage.tsx)
+- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md)
+- [`tools/graphify`](tools/graphify)
