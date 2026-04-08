@@ -1,6 +1,7 @@
 import type { LayoutNode, LayoutResult, TopologyMode, VaultGraph, VaultNote } from '../types';
 
 const TAU = Math.PI * 2;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 type SpatialPoint = {
   x: number;
@@ -12,6 +13,13 @@ type ForcePoint = SpatialPoint & {
   vx: number;
   vy: number;
   vz: number;
+};
+
+type GroupLayoutStats = {
+  crossLinks: number;
+  internalLinks: number;
+  totalImportance: number;
+  size: number;
 };
 
 export function buildTopologyLayout(graph: VaultGraph, topology: TopologyMode): LayoutResult {
@@ -121,44 +129,106 @@ function buildCentralizedLayout(graph: VaultGraph, hubNoteId: string | null) {
 
 function buildClusteredLayout(graph: VaultGraph) {
   const positions = new Map<string, SpatialPoint>();
-  const groupedNotes = Array.from(groupBy(graph.notes, (note) => note.group).entries()).sort(
-    (left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]),
-  );
+  const noteGroupMap = new Map(graph.notes.map((note) => [note.id, note.group]));
+  const groupStats = buildGroupLayoutStats(graph, noteGroupMap);
+  const groupedNotes = Array.from(groupBy(graph.notes, (note) => note.group).entries())
+    .map(([group, notes]) => ({
+      group,
+      notes: [...notes].sort(
+        (left, right) => right.importance - left.importance || left.title.localeCompare(right.title),
+      ),
+      stats:
+        groupStats.get(group) ?? {
+          crossLinks: 0,
+          internalLinks: 0,
+          totalImportance: notes.reduce((sum, note) => sum + note.importance, 0),
+          size: notes.length,
+        },
+    }))
+    .sort((left, right) => {
+      return (
+        right.notes.length - left.notes.length ||
+        right.stats.crossLinks - left.stats.crossLinks ||
+        left.group.localeCompare(right.group)
+      );
+    });
 
-  const hubRadius = Math.max(4.8, groupedNotes.length * 0.92);
+  groupedNotes.forEach(({ group, notes, stats }, groupIndex) => {
+    if (groupedNotes.length === 1) {
+      notes.forEach((note, noteIndex) => {
+        if (noteIndex === 0) {
+          positions.set(note.id, { x: 0, y: 0, z: 0 });
+          return;
+        }
 
-  groupedNotes.forEach(([group, notes], groupIndex) => {
-    const groupT = groupedNotes.length === 1 ? 0.5 : groupIndex / Math.max(1, groupedNotes.length - 1);
-    const groupAngle = groupedNotes.length === 1 ? 0 : (groupIndex / groupedNotes.length) * TAU + Math.PI / 10;
-    const clusterCenter =
-      groupedNotes.length === 1
-        ? { x: 0, y: 0, z: 0 }
-        : {
-            x: Math.cos(groupAngle) * hubRadius * 0.98,
-            y: (groupT - 0.5) * hubRadius * 1.22 + Math.sin(groupAngle * 1.45) * 0.9,
-            z: Math.sin(groupAngle) * hubRadius * 0.84,
-          };
+        const localIndex = noteIndex - 1;
+        const spiralRadius = 1.7 + Math.sqrt(localIndex + 1) * 0.92;
+        const angle = localIndex * GOLDEN_ANGLE + seeded(note.id, 'solo-cluster-angle') * 0.8;
+        const depth = (seeded(note.id, 'solo-cluster-depth') - 0.5) * 2.1;
 
-    const sortedNotes = [...notes].sort(
-      (left, right) => right.importance - left.importance || left.title.localeCompare(right.title),
-    );
+        positions.set(note.id, {
+          x: Math.cos(angle) * spiralRadius,
+          y: depth,
+          z: Math.sin(angle) * spiralRadius,
+        });
+      });
+      return;
+    }
 
-    sortedNotes.forEach((note, noteIndex) => {
+    const direction = getFibonacciSpherePoint(groupIndex, groupedNotes.length, seeded(group, 'cluster-jitter'));
+    const connectivityRatio = stats.crossLinks / Math.max(1, stats.crossLinks + stats.internalLinks);
+    const importanceRatio = stats.totalImportance / Math.max(1, notes.length * Math.max(notes[0]?.importance ?? 1, 1));
+    const shellRadius =
+      7.4 +
+      (1 - connectivityRatio) * 2.6 +
+      Math.min(1.8, Math.log2(notes.length + 1) * 0.55) +
+      Math.min(1.1, importanceRatio * 0.18) +
+      seeded(group, 'cluster-shell') * 1.2;
+    const clusterCenter = scalePoint(direction, shellRadius);
+    const clusterRadius =
+      1.9 + Math.cbrt(notes.length) * 1.2 + Math.min(1.2, stats.crossLinks * 0.03) + seeded(group, 'cluster-span') * 0.5;
+    const { tangent, bitangent } = getPerpendicularBasis(direction);
+
+    notes.forEach((note, noteIndex) => {
       if (noteIndex === 0) {
-        positions.set(note.id, clusterCenter);
+        const inwardBias = clusterRadius * 0.24;
+        positions.set(note.id, {
+          x: clusterCenter.x - direction.x * inwardBias,
+          y: clusterCenter.y - direction.y * inwardBias,
+          z: clusterCenter.z - direction.z * inwardBias,
+        });
         return;
       }
 
-      const shell = 1.6 + Math.sqrt(Math.ceil(noteIndex / 3)) * 1.35 + seeded(note.id, 'cluster-shell') * 1.05;
-      const azimuth =
-        noteIndex * 1.5 + groupIndex * 0.76 + seeded(`${group}:${note.id}`, 'cluster-angle') * Math.PI;
-      const pitch = (seeded(note.id, 'cluster-pitch') - 0.5) * 1.42 + Math.sin(noteIndex * 0.82) * 0.1;
-      const spread = shell * Math.sqrt(Math.max(0.22, 1 - pitch * pitch * 0.45));
+      const localIndex = noteIndex - 1;
+      const localProgress = Math.sqrt((localIndex + 0.75) / Math.max(1, notes.length - 0.15));
+      const localRadius =
+        clusterRadius *
+        localProgress *
+        (0.82 + seeded(note.id, 'cluster-local-radius') * 0.5);
+      const angle = localIndex * GOLDEN_ANGLE + seeded(`${group}:${note.id}`, 'cluster-local-angle') * 0.9;
+      const axial =
+        (seeded(note.id, 'cluster-depth') - 0.5) * clusterRadius * 1.15 +
+        Math.sin(localIndex * 0.72) * clusterRadius * 0.12;
+      const tangential = Math.cos(angle) * localRadius;
+      const binormal = Math.sin(angle) * localRadius;
 
       positions.set(note.id, {
-        x: clusterCenter.x + Math.cos(azimuth) * spread,
-        y: clusterCenter.y + pitch * shell * 0.9,
-        z: clusterCenter.z + Math.sin(azimuth) * spread,
+        x:
+          clusterCenter.x +
+          tangent.x * tangential +
+          bitangent.x * binormal +
+          direction.x * axial,
+        y:
+          clusterCenter.y +
+          tangent.y * tangential +
+          bitangent.y * binormal +
+          direction.y * axial,
+        z:
+          clusterCenter.z +
+          tangent.z * tangential +
+          bitangent.z * binormal +
+          direction.z * axial,
       });
     });
   });
@@ -172,7 +242,7 @@ function buildDistributedLayout(graph: VaultGraph) {
   const positions: ForcePoint[] = notes.map((note, index) => {
     const azimuth = seeded(note.id, `distributed-angle-${index}`) * TAU;
     const pitch = (seeded(note.id, `distributed-pitch-${index}`) - 0.5) * Math.PI * 0.78;
-    const radius = 3.6 + seeded(note.id, `distributed-radius-${index}`) * 10.8;
+    const radius = 5.1 + seeded(note.id, `distributed-radius-${index}`) * 13.8;
     const planar = Math.cos(pitch) * radius;
 
     return {
@@ -194,11 +264,29 @@ function buildDistributedLayout(graph: VaultGraph) {
         return null;
       }
 
-      return { source, target };
-    })
-    .filter((value): value is { source: number; target: number } => value !== null);
+      const restLength =
+        edge.kind === 'sibling' ? 7.2 : edge.kind === 'semantic' ? 5.8 : 5.3;
+      const strength =
+        edge.kind === 'sibling'
+          ? 0.006
+          : edge.kind === 'semantic'
+            ? 0.014
+            : 0.017;
 
-  for (let iteration = 0; iteration < 170; iteration += 1) {
+      return {
+        source,
+        target,
+        restLength,
+        strength: strength * Math.max(0.6, edge.weight),
+      };
+    })
+    .filter(
+      (
+        value,
+      ): value is { source: number; target: number; restLength: number; strength: number } => value !== null,
+    );
+
+  for (let iteration = 0; iteration < 190; iteration += 1) {
     for (let left = 0; left < positions.length; left += 1) {
       for (let right = left + 1; right < positions.length; right += 1) {
         const a = positions[left];
@@ -206,9 +294,9 @@ function buildDistributedLayout(graph: VaultGraph) {
         const dx = a.x - b.x;
         const dy = a.y - b.y;
         const dz = a.z - b.z;
-        const distanceSquared = dx * dx + dy * dy + dz * dz + 0.26;
+        const distanceSquared = dx * dx + dy * dy + dz * dz + 0.34;
         const distance = Math.sqrt(distanceSquared);
-        const repel = 5 / distanceSquared;
+        const repel = 8.4 / distanceSquared;
         const nx = dx / distance;
         const ny = dy / distance;
         const nz = dz / distance;
@@ -229,7 +317,7 @@ function buildDistributedLayout(graph: VaultGraph) {
       const dy = target.y - source.y;
       const dz = target.z - source.z;
       const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.001;
-      const spring = (distance - 3.5) * 0.018;
+      const spring = (distance - link.restLength) * link.strength;
       const nx = dx / distance;
       const ny = dy / distance;
       const nz = dz / distance;
@@ -243,12 +331,12 @@ function buildDistributedLayout(graph: VaultGraph) {
     }
 
     for (const point of positions) {
-      point.vx += -point.x * 0.0058;
-      point.vy += -point.y * 0.0062;
-      point.vz += -point.z * 0.0058;
-      point.vx *= 0.78;
-      point.vy *= 0.78;
-      point.vz *= 0.78;
+      point.vx += -point.x * 0.0046;
+      point.vy += -point.y * 0.0049;
+      point.vz += -point.z * 0.0046;
+      point.vx *= 0.8;
+      point.vy *= 0.8;
+      point.vz *= 0.8;
       point.x += point.vx;
       point.y += point.vy;
       point.z += point.vz;
@@ -270,13 +358,13 @@ function buildDistributedLayout(graph: VaultGraph) {
 function getTargetRadius(topology: TopologyMode) {
   switch (topology) {
     case 'centralized':
-      return 10.5;
+      return 12.2;
     case 'clustered':
-      return 11.4;
+      return 14.8;
     case 'distributed':
-      return 10.8;
+      return 13.8;
     default:
-      return 10.8;
+      return 13.8;
   }
 }
 
@@ -390,6 +478,111 @@ function groupBy<T>(items: T[], getKey: (value: T) => string) {
   }
 
   return groups;
+}
+
+function buildGroupLayoutStats(graph: VaultGraph, noteGroupMap: Map<string, string>) {
+  const stats = new Map<string, GroupLayoutStats>();
+
+  for (const note of graph.notes) {
+    const current =
+      stats.get(note.group) ??
+      {
+        crossLinks: 0,
+        internalLinks: 0,
+        totalImportance: 0,
+        size: 0,
+      };
+
+    current.size += 1;
+    current.totalImportance += note.importance;
+    stats.set(note.group, current);
+  }
+
+  for (const edge of graph.edges) {
+    const sourceGroup = noteGroupMap.get(edge.source);
+    const targetGroup = noteGroupMap.get(edge.target);
+    if (!sourceGroup || !targetGroup) {
+      continue;
+    }
+
+    const baseWeight =
+      edge.kind === 'semantic' ? 1.1 : edge.kind === 'wikilink' ? 1 : 0.35;
+    const contribution = Math.max(0.35, edge.weight) * baseWeight;
+
+    if (sourceGroup === targetGroup) {
+      const groupStats = stats.get(sourceGroup);
+      if (groupStats) {
+        groupStats.internalLinks += contribution;
+      }
+      continue;
+    }
+
+    const sourceStats = stats.get(sourceGroup);
+    if (sourceStats) {
+      sourceStats.crossLinks += contribution;
+    }
+
+    const targetStats = stats.get(targetGroup);
+    if (targetStats) {
+      targetStats.crossLinks += contribution;
+    }
+  }
+
+  return stats;
+}
+
+function getFibonacciSpherePoint(index: number, count: number, jitter: number) {
+  if (count <= 1) {
+    return { x: 0, y: 1, z: 0 };
+  }
+
+  const offset = (index + 0.5 + jitter * 0.3) / count;
+  const y = 1 - offset * 2;
+  const radial = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = GOLDEN_ANGLE * (index + jitter * 0.85);
+
+  return normalizePoint({
+    x: Math.cos(theta) * radial,
+    y: y * 0.92,
+    z: Math.sin(theta) * radial,
+  });
+}
+
+function getPerpendicularBasis(direction: SpatialPoint) {
+  const normalizedDirection = normalizePoint(direction);
+  const reference =
+    Math.abs(normalizedDirection.y) > 0.88
+      ? { x: 1, y: 0, z: 0 }
+      : { x: 0, y: 1, z: 0 };
+  const tangent = normalizePoint(cross(reference, normalizedDirection));
+  const bitangent = normalizePoint(cross(normalizedDirection, tangent));
+
+  return { tangent, bitangent };
+}
+
+function scalePoint(point: SpatialPoint, scalar: number): SpatialPoint {
+  return {
+    x: point.x * scalar,
+    y: point.y * scalar,
+    z: point.z * scalar,
+  };
+}
+
+function normalizePoint(point: SpatialPoint): SpatialPoint {
+  const length = Math.hypot(point.x, point.y, point.z) || 1;
+  return {
+    x: point.x / length,
+    y: point.y / length,
+    z: point.z / length,
+  };
+}
+
+function cross(left: SpatialPoint, right: SpatialPoint): SpatialPoint {
+  return {
+    x: left.y * right.z - left.z * right.y,
+    y: left.z * right.x - left.x * right.z,
+    z: left.x * right.y - left.y * right.x,
+  };
 }
 
 function seeded(source: string, salt: string) {
