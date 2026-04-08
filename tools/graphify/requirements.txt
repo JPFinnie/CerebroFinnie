@@ -1,0 +1,24 @@
+# Graphify — Python dependencies for CerebroFinnie semantic edge extraction
+# Run: pip install -r requirements.txt
+# Then: python -m graphify <path-to-vault-subfolder>
+
+# Core graph library (required)
+networkx>=3.0
+
+# Tree-sitter parsers — needed only if analysing source-code files.
+# For a pure Obsidian markdown vault you can skip these.
+tree-sitter
+tree-sitter-python
+tree-sitter-javascript
+tree-sitter-typescript
+
+# Community detection — Leiden algorithm (much better than basic Louvain).
+# Optional but recommended for larger vaults.
+graspologic
+
+# Document ingestion — optional, for PDF / HTML sources.
+pypdf>=3.0
+html2text
+
+# File-watching — optional, for graphify --watch mode.
+watchdog

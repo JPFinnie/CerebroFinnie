@@ -13,7 +13,7 @@ const DEFAULT_REMOTE_PATH = 'snapshots/latest/vault-graph.json';
 
 async function main() {
   const supabaseUrl = readRequiredEnv('SUPABASE_URL');
-  const supabaseSecretKey = readRequiredEnv('SUPABASE_SECRET_KEY');
+  const supabaseSecretKey = readRequiredEnv('SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY');
   const snapshotBucket = process.env.SUPABASE_SNAPSHOT_BUCKET?.trim() || DEFAULT_BUCKET;
   const remotePath = process.env.SUPABASE_SNAPSHOT_PATH?.trim() || DEFAULT_REMOTE_PATH;
 
@@ -59,13 +59,15 @@ async function ensureBucket(supabase, bucketName) {
   }
 }
 
-function readRequiredEnv(name) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+function readRequiredEnv(...names) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) {
+      return value;
+    }
   }
 
-  return value;
+  throw new Error(`Missing required environment variable: ${names.join(' or ')}`);
 }
 
 function runNodeScript(scriptPath) {

@@ -12,7 +12,8 @@ export default async function handler(request, response) {
   }
 
   const supabaseUrl = process.env.SUPABASE_URL?.trim();
-  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY?.trim();
+  const supabaseSecretKey =
+    process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const snapshotBucket = process.env.SUPABASE_SNAPSHOT_BUCKET?.trim() || DEFAULT_BUCKET;
   const snapshotPath = process.env.SUPABASE_SNAPSHOT_PATH?.trim() || DEFAULT_PATH;
   const allowedEmail = (process.env.CEREBRO_ALLOWED_EMAIL?.trim() || DEFAULT_ALLOWED_EMAIL).toLowerCase();
