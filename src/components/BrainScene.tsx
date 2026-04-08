@@ -1,30 +1,11 @@
 import { Html, OrbitControls, useCursor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
 import { MOUSE, Vector3 } from 'three';
+import type { LineBasicMaterial } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { buildTopologyLayout } from '../lib/layouts';
 import type { HandNavigationSignal, LayoutNode, TopologyMode, VaultGraph, ZoomTier } from '../types';
-
-// ── Cluster glow texture (radial gradient, white-to-transparent) ──────────────
-function makeGlowTexture(): THREE.CanvasTexture {
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const h = size / 2;
-  const g = ctx.createRadialGradient(h, h, 0, h, h, h);
-  g.addColorStop(0, 'rgba(255,255,255,0.82)');
-  g.addColorStop(0.5, 'rgba(255,255,255,0.26)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
-}
-
-// ── BrainScene (canvas wrapper) ───────────────────────────────────────────────
 
 type BrainSceneProps = {
   graph: VaultGraph;
@@ -41,6 +22,53 @@ type BrainSceneProps = {
   onDeselect: () => void;
 };
 
+type SceneCoreProps = {
+  layout: ReturnType<typeof buildTopologyLayout>;
+  graph: VaultGraph;
+  topology: TopologyMode;
+  selectedNoteId: string | null;
+  activeGroup: string | null;
+  searchMatchIds: Set<string> | null;
+  performanceMode: boolean;
+  handSignalRef: React.MutableRefObject<HandNavigationSignal>;
+  isPaused: boolean;
+  isGestureRunning: boolean;
+  panMode: boolean;
+  onSelect: (noteId: string) => void;
+  onOpenNote: () => void;
+};
+
+type ClusterAnchor = {
+  key: string;
+  label: string;
+  position: [number, number, number];
+  weight: number;
+};
+
+type NoteMarkerProps = {
+  node: LayoutNode;
+  selected: boolean;
+  dimmed: boolean;
+  hasSelection: boolean;
+  isGestureRunning: boolean;
+  onSelect: (noteId: string) => void;
+};
+
+type CameraRigProps = {
+  handSignalRef: React.MutableRefObject<HandNavigationSignal>;
+  layout: ReturnType<typeof buildTopologyLayout>;
+  isPaused: boolean;
+  panMode: boolean;
+  onGestureSelect: (noteId: string) => void;
+  onOpenNote: () => void;
+  zoomTierRef: React.MutableRefObject<ZoomTier>;
+  onTierChange: (tier: ZoomTier) => void;
+  focusTarget: [number, number, number] | null;
+};
+
+const LARGE_GRAPH_NOTE_THRESHOLD = 280;
+const LARGE_GRAPH_EDGE_THRESHOLD = 1200;
+
 export function BrainScene({
   graph,
   topology,
@@ -56,17 +84,19 @@ export function BrainScene({
   onDeselect,
 }: BrainSceneProps) {
   const layout = useMemo(() => buildTopologyLayout(graph, topology), [graph, topology]);
+  const performanceMode =
+    graph.noteCount > LARGE_GRAPH_NOTE_THRESHOLD || graph.edgeCount > LARGE_GRAPH_EDGE_THRESHOLD;
 
   return (
     <div className="scene-shell">
       <Canvas
         camera={{ position: [0, 2, 18], fov: 44 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: true }}
+        dpr={[1, performanceMode ? 1.15 : 1.35]}
+        gl={{ antialias: !performanceMode, alpha: true }}
         onPointerMissed={() => onDeselect()}
       >
         <fog attach="fog" args={['#07151d', 28, 72]} />
-        <ambientLight intensity={1.1} />
+        <ambientLight intensity={1.05} />
 
         <SceneCore
           layout={layout}
@@ -75,6 +105,7 @@ export function BrainScene({
           selectedNoteId={selectedNoteId}
           activeGroup={activeGroup}
           searchMatchIds={searchMatchIds}
+          performanceMode={performanceMode}
           handSignalRef={handSignalRef}
           isPaused={isPaused}
           isGestureRunning={isGestureRunning}
@@ -87,23 +118,6 @@ export function BrainScene({
   );
 }
 
-// ── SceneCore ─────────────────────────────────────────────────────────────────
-
-type SceneCoreProps = {
-  layout: ReturnType<typeof buildTopologyLayout>;
-  graph: VaultGraph;
-  topology: TopologyMode;
-  selectedNoteId: string | null;
-  activeGroup: string | null;
-  searchMatchIds: Set<string> | null;
-  handSignalRef: React.MutableRefObject<HandNavigationSignal>;
-  isPaused: boolean;
-  isGestureRunning: boolean;
-  panMode: boolean;
-  onSelect: (noteId: string) => void;
-  onOpenNote: () => void;
-};
-
 function SceneCore({
   layout,
   graph,
@@ -111,6 +125,7 @@ function SceneCore({
   selectedNoteId,
   activeGroup,
   searchMatchIds,
+  performanceMode,
   handSignalRef,
   isPaused,
   isGestureRunning,
@@ -118,209 +133,239 @@ function SceneCore({
   onSelect,
   onOpenNote,
 }: SceneCoreProps) {
-  // ── Zoom tier state (used for JSX label/glow conditionals) ─────────────────
   const zoomTierRef = useRef<ZoomTier>('explore');
   const [zoomTier, setZoomTier] = useState<ZoomTier>('explore');
-  const handleTierChange = useCallback((t: ZoomTier) => setZoomTier(t), []);
+  const handleTierChange = useCallback((tier: ZoomTier) => setZoomTier(tier), []);
 
-  // ── Material refs for frame-loop opacity animation ─────────────────────────
-  const allEdgeMaterialRef = useRef<THREE.LineBasicMaterial | null>(null);
-  const strongEdgeMaterialRef = useRef<THREE.LineBasicMaterial | null>(null);
+  const allEdgeMaterialRef = useRef<LineBasicMaterial | null>(null);
+  const strongEdgeMaterialRef = useRef<LineBasicMaterial | null>(null);
 
-  // ── Animate edge opacity based on zoom tier ────────────────────────────────
   useFrame(() => {
     const tier = zoomTierRef.current;
+
     if (allEdgeMaterialRef.current) {
-      const target = tier === 'atlas' ? 0.0 : tier === 'explore' ? 0.11 : 0.2;
+      const target = tier === 'atlas' ? 0 : tier === 'explore' ? 0.035 : 0.07;
       allEdgeMaterialRef.current.opacity += (target - allEdgeMaterialRef.current.opacity) * 0.06;
     }
+
     if (strongEdgeMaterialRef.current) {
-      const target = tier === 'atlas' ? 0.28 : tier === 'explore' ? 0.22 : 0.18;
+      const target = tier === 'atlas' ? 0.16 : tier === 'explore' ? 0.12 : 0.1;
       strongEdgeMaterialRef.current.opacity += (target - strongEdgeMaterialRef.current.opacity) * 0.06;
     }
   });
 
-  // ── Visible node set ───────────────────────────────────────────────────────
   const visibleIds = useMemo(() => {
     const ids = new Set<string>();
+
     for (const node of layout.nodes) {
       const withinGroup = !activeGroup || node.group === activeGroup;
       const withinSearch = !searchMatchIds || searchMatchIds.has(node.id);
       const forcedVisible = node.id === selectedNoteId;
+
       if ((withinGroup && withinSearch) || forcedVisible) {
         ids.add(node.id);
       }
     }
+
     return ids;
   }, [activeGroup, layout.nodes, searchMatchIds, selectedNoteId]);
 
-  // ── Importance thresholds for zoom-aware edges ─────────────────────────────
   const importanceThreshold = useMemo(() => {
-    const vals = layout.nodes.map((n) => n.importance).sort((a, b) => b - a);
-    return vals[Math.floor(vals.length * 0.33)] ?? 0;
+    const values = layout.nodes.map((node) => node.importance).sort((left, right) => right - left);
+    return values[Math.floor(values.length * 0.33)] ?? 0;
   }, [layout.nodes]);
 
   const maxImportance = useMemo(
-    () => Math.max(...layout.nodes.map((n) => n.importance), 1),
+    () => Math.max(...layout.nodes.map((node) => node.importance), 1),
     [layout.nodes],
   );
 
-  // ── Edge position buffers ──────────────────────────────────────────────────
   const allEdgePositions = useMemo(() => {
     const values: number[] = [];
+
     for (const edge of graph.edges) {
+      if (performanceMode && edge.kind === 'sibling') continue;
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
+
       const source = layout.nodeMap.get(edge.source);
       const target = layout.nodeMap.get(edge.target);
       if (!source || !target) continue;
+
       values.push(
         source.position[0], source.position[1], source.position[2],
         target.position[0], target.position[1], target.position[2],
       );
     }
+
     return new Float32Array(values);
-  }, [graph.edges, layout.nodeMap, visibleIds]);
+  }, [graph.edges, layout.nodeMap, performanceMode, visibleIds]);
 
   const strongEdgePositions = useMemo(() => {
     const values: number[] = [];
+
     for (const edge of graph.edges) {
+      if (edge.kind === 'sibling') continue;
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
+
       const source = layout.nodeMap.get(edge.source);
       const target = layout.nodeMap.get(edge.target);
       if (!source || !target) continue;
       if (source.importance < importanceThreshold || target.importance < importanceThreshold) continue;
+
       values.push(
         source.position[0], source.position[1], source.position[2],
         target.position[0], target.position[1], target.position[2],
       );
     }
+
     return new Float32Array(values);
-  }, [graph.edges, layout.nodeMap, visibleIds, importanceThreshold]);
+  }, [graph.edges, importanceThreshold, layout.nodeMap, visibleIds]);
 
   const selectedEdgePositions = useMemo(() => {
-    if (!selectedNoteId) return new Float32Array();
+    if (!selectedNoteId) {
+      return new Float32Array();
+    }
+
     const values: number[] = [];
     for (const edge of graph.edges) {
       if (edge.source !== selectedNoteId && edge.target !== selectedNoteId) continue;
+
       const source = layout.nodeMap.get(edge.source);
       const target = layout.nodeMap.get(edge.target);
       if (!source || !target) continue;
+
       values.push(
         source.position[0], source.position[1], source.position[2],
         target.position[0], target.position[1], target.position[2],
       );
     }
+
     return new Float32Array(values);
   }, [graph.edges, layout.nodeMap, selectedNoteId]);
 
-  // ── Zoom-aware label set ───────────────────────────────────────────────────
   const visibleLabelIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const node of layout.nodes) {
-      if (!visibleIds.has(node.id) || node.id === selectedNoteId) continue;
-      const imp = node.importance / maxImportance;
-      if (zoomTier === 'atlas' && imp >= 0.72) ids.add(node.id);
-      else if (zoomTier === 'explore' && (imp >= 0.38 || searchMatchIds?.has(node.id))) ids.add(node.id);
-      else if (zoomTier === 'close') ids.add(node.id);
-    }
-    return ids;
-  }, [layout.nodes, visibleIds, selectedNoteId, zoomTier, maxImportance, searchMatchIds]);
+    const tierLimit = performanceMode
+      ? zoomTier === 'atlas'
+        ? 6
+        : zoomTier === 'explore'
+          ? 12
+          : 20
+      : zoomTier === 'atlas'
+        ? 10
+        : zoomTier === 'explore'
+          ? 18
+          : 28;
 
-  // ── Cluster region glows ───────────────────────────────────────────────────
-  const clusterRegions = useMemo(() => {
-    if (topology !== 'clustered') return [];
+    const candidates = layout.nodes
+      .filter((node) => visibleIds.has(node.id) && node.id !== selectedNoteId)
+      .map((node) => ({
+        node,
+        emphasis: searchMatchIds?.has(node.id) ? 1 : 0,
+        importanceRatio: node.importance / maxImportance,
+      }))
+      .filter(({ emphasis, importanceRatio }) => {
+        if (zoomTier === 'atlas') {
+          return emphasis === 1 || importanceRatio >= 0.72;
+        }
+        if (zoomTier === 'explore') {
+          return emphasis === 1 || importanceRatio >= 0.48;
+        }
+        return emphasis === 1 || importanceRatio >= (performanceMode ? 0.26 : 0.18);
+      })
+      .sort((left, right) => {
+        return (
+          right.emphasis - left.emphasis ||
+          right.node.importance - left.node.importance ||
+          left.node.title.localeCompare(right.node.title)
+        );
+      })
+      .slice(0, tierLimit);
+
+    return new Set(candidates.map(({ node }) => node.id));
+  }, [layout.nodes, maxImportance, performanceMode, searchMatchIds, selectedNoteId, visibleIds, zoomTier]);
+
+  const clusterAnchors = useMemo(() => {
+    if (topology !== 'clustered') {
+      return [] as ClusterAnchor[];
+    }
+
     const groups = new Map<string, LayoutNode[]>();
     for (const node of layout.nodes) {
-      if (!groups.has(node.group)) groups.set(node.group, []);
-      groups.get(node.group)!.push(node);
+      const bucket = groups.get(node.group);
+      if (bucket) {
+        bucket.push(node);
+      } else {
+        groups.set(node.group, [node]);
+      }
     }
-    return Array.from(groups.entries()).map(([key, nodes]) => {
-      const cx = nodes.reduce((s, n) => s + n.position[0], 0) / nodes.length;
-      const cy = nodes.reduce((s, n) => s + n.position[1], 0) / nodes.length;
-      const cz = nodes.reduce((s, n) => s + n.position[2], 0) / nodes.length;
-      const radius =
-        Math.max(
-          2.8,
-          ...nodes.map((n) =>
-            Math.hypot(n.position[0] - cx, n.position[1] - cy, n.position[2] - cz),
-          ),
-        ) * 1.35;
-      const color = nodes[0]?.color ?? '#5599bb';
-      const topNode = nodes.reduce((best, n) => (n.importance > best.importance ? n : best), nodes[0]!);
-      return { key, cx, cy, cz, radius, color, label: topNode.group || key };
-    });
+
+    return Array.from(groups.entries())
+      .map(([key, nodes]) => {
+        const cx = nodes.reduce((sum, node) => sum + node.position[0], 0) / nodes.length;
+        const cy = nodes.reduce((sum, node) => sum + node.position[1], 0) / nodes.length;
+        const cz = nodes.reduce((sum, node) => sum + node.position[2], 0) / nodes.length;
+        const topNode = nodes.reduce((best, node) => (node.importance > best.importance ? node : best), nodes[0]!);
+
+        return {
+          key,
+          label: topNode.group || key,
+          position: [cx, cy + 1.8, cz] as [number, number, number],
+          weight: nodes.reduce((sum, node) => sum + node.importance, 0),
+        };
+      })
+      .sort((left, right) => right.weight - left.weight || left.label.localeCompare(right.label));
   }, [layout.nodes, topology]);
 
-  const glowTexture = useMemo(() => makeGlowTexture(), []);
-
   const selectedNode = selectedNoteId ? layout.nodeMap.get(selectedNoteId) ?? null : null;
-  const hasSelection = selectedNoteId !== null;
   const labelDistanceFactor = zoomTier === 'atlas' ? 18 : 14;
 
   return (
     <>
-      {/* All-edge lines (faint, animated by useFrame) */}
-      {allEdgePositions.length > 0 ? (
+      {zoomTier !== 'atlas' && allEdgePositions.length > 0 ? (
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[allEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial ref={allEdgeMaterialRef} color="#77b8cf" transparent opacity={0.11} />
+          <lineBasicMaterial ref={allEdgeMaterialRef} color="#77b8cf" transparent opacity={0.035} />
         </lineSegments>
       ) : null}
 
-      {/* Strong edges (top-33% nodes) — always visible skeleton */}
       {strongEdgePositions.length > 0 ? (
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[strongEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial ref={strongEdgeMaterialRef} color="#88c4d8" transparent opacity={0.22} />
+          <lineBasicMaterial ref={strongEdgeMaterialRef} color="#88c4d8" transparent opacity={0.12} />
         </lineSegments>
       ) : null}
 
-      {/* Selected node edges */}
       {selectedEdgePositions.length > 0 ? (
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[selectedEdgePositions, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#ffd08b" transparent opacity={0.72} />
+          <lineBasicMaterial color="#ffd08b" transparent opacity={0.62} />
         </lineSegments>
       ) : null}
 
-      {/* Cluster region glows */}
-      {clusterRegions.map((r) => (
-        <ClusterGlow
-          key={r.key}
-          cx={r.cx}
-          cy={r.cy}
-          cz={r.cz}
-          radius={r.radius}
-          color={r.color}
-          glowTexture={glowTexture}
-          show={zoomTier === 'atlas' || zoomTier === 'explore'}
-        />
-      ))}
-
-      {/* Nodes */}
       {layout.nodes.map((node) => (
         <NoteMarker
           key={node.id}
           node={node}
           selected={node.id === selectedNoteId}
           dimmed={!visibleIds.has(node.id)}
-          isHub={node.id === layout.hubNoteId}
-          hasSelection={hasSelection}
+          hasSelection={selectedNoteId !== null}
           isGestureRunning={isGestureRunning}
           onSelect={onSelect}
         />
       ))}
 
-      {/* Node labels — zoom-aware */}
       {layout.nodes.map((node) => {
-        if (!visibleLabelIds.has(node.id)) return null;
-        const title = node.title.length > 22 ? node.title.slice(0, 20) + '…' : node.title;
+        if (!visibleLabelIds.has(node.id)) {
+          return null;
+        }
+
+        const title = node.title.length > 22 ? `${node.title.slice(0, 20)}…` : node.title;
         return (
           <Html
             key={`label-${node.id}`}
@@ -336,22 +381,20 @@ function SceneCore({
         );
       })}
 
-      {/* Cluster title labels — shown in atlas tier only */}
-      {zoomTier === 'atlas' && clusterRegions.map((r) => (
+      {zoomTier === 'atlas' && clusterAnchors.slice(0, performanceMode ? 6 : 8).map((anchor) => (
         <Html
-          key={`cluster-label-${r.key}`}
-          position={[r.cx, r.cy + r.radius * 0.34, r.cz]}
+          key={`cluster-label-${anchor.key}`}
+          position={anchor.position}
           center
           className="node-label"
-          distanceFactor={10}
+          distanceFactor={11}
         >
           <div className="node-label-card">
-            <span>{capitalizeFirst(r.label)}</span>
+            <span>{capitalizeFirst(anchor.label)}</span>
           </div>
         </Html>
       ))}
 
-      {/* Selected node label */}
       {selectedNode ? (
         <Html
           position={[
@@ -385,136 +428,45 @@ function SceneCore({
   );
 }
 
-// ── ClusterGlow ───────────────────────────────────────────────────────────────
-
-type ClusterGlowProps = {
-  cx: number;
-  cy: number;
-  cz: number;
-  radius: number;
-  color: string;
-  glowTexture: THREE.Texture;
-  show: boolean;
-};
-
-function ClusterGlow({ cx, cy, cz, radius, color, glowTexture, show }: ClusterGlowProps) {
-  const materialRefs = useRef<Array<THREE.SpriteMaterial | null>>([]);
-  const phase = useRef((Math.abs(cx) + Math.abs(cy) + Math.abs(cz)) * 0.07);
-  const layers = useMemo(
-    () => [
-      { scale: radius * 3.2, offset: [0, 0, 0] as const },
-      { scale: radius * 2.35, offset: [radius * 0.18, radius * 0.08, -radius * 0.16] as const },
-      { scale: radius * 1.75, offset: [-radius * 0.16, -radius * 0.12, radius * 0.14] as const },
-    ],
-    [radius],
-  );
-
-  useFrame(({ clock }) => {
-    materialRefs.current.forEach((material, index) => {
-      if (!material) {
-        return;
-      }
-
-      const shimmer = Math.sin(clock.elapsedTime * 0.5 + phase.current + index * 0.9) * 0.014;
-      const baseOpacity = show ? 0.11 - index * 0.026 : 0;
-      const target = Math.max(0, baseOpacity + shimmer);
-      material.opacity += (target - material.opacity) * 0.08;
-    });
-  });
-
-  return (
-    <group position={[cx, cy, cz]}>
-      {layers.map((layer, index) => (
-        <sprite key={`${cx}-${cy}-${cz}-${index}`} position={layer.offset} scale={[layer.scale, layer.scale, 1]}>
-          <spriteMaterial
-            ref={(material) => {
-              materialRefs.current[index] = material;
-            }}
-            map={glowTexture}
-            color={color}
-            transparent
-            opacity={0}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </sprite>
-      ))}
-    </group>
-  );
-}
-
-// ── NoteMarker ────────────────────────────────────────────────────────────────
-
-type NoteMarkerProps = {
-  node: LayoutNode;
-  selected: boolean;
-  dimmed: boolean;
-  isHub: boolean;
-  hasSelection: boolean;
-  isGestureRunning: boolean;
-  onSelect: (noteId: string) => void;
-};
-
-function NoteMarker({ node, selected, dimmed, isHub, hasSelection, isGestureRunning, onSelect }: NoteMarkerProps) {
+function NoteMarker({ node, selected, dimmed, hasSelection, isGestureRunning, onSelect }: NoteMarkerProps) {
   const [hovered, setHovered] = useState(false);
   useCursor(hovered);
 
   const baseRadius = node.scale * 0.28;
-  const radius = selected ? baseRadius * 1.7 : hovered ? baseRadius * 1.3 : baseRadius;
+  const radius = selected ? baseRadius * 1.55 : hovered ? baseRadius * 1.22 : baseRadius;
   const color = selected ? '#ffd777' : hovered ? '#7de8ff' : node.color;
-
-  // Aggressive dimming when something is selected
   const dimOpacity = hasSelection ? 0.04 : 0.08;
-  const opacity = dimmed ? dimOpacity : selected ? 1.0 : isHub ? 1.0 : hovered ? 1.0 : 0.9;
-  const glowOpacity = dimmed ? 0 : selected ? 0.18 : 0.06;
+  const opacity = dimmed ? dimOpacity : selected ? 1 : hovered ? 1 : 0.9;
 
   return (
     <group position={node.position}>
-      {/* Selection halo ring */}
-      {selected && (
+      {selected ? (
         <mesh>
-          <sphereGeometry args={[radius * 2.8, 12, 8]} />
-          <meshBasicMaterial color="#ffd777" transparent opacity={0.18} wireframe />
+          <sphereGeometry args={[radius * 2.4, 10, 8]} />
+          <meshBasicMaterial color="#ffd777" transparent opacity={0.16} wireframe />
         </mesh>
-      )}
-      {/* Outer glow halo */}
-      {glowOpacity > 0 && (
-        <mesh>
-          <sphereGeometry args={[radius * 2.4, 5, 3]} />
-          <meshBasicMaterial color={color} transparent opacity={glowOpacity} />
-        </mesh>
-      )}
-      {/* Visible node */}
+      ) : null}
+
       <mesh>
         <sphereGeometry args={[radius, 6, 4]} />
         <meshBasicMaterial color={color} transparent opacity={opacity} />
       </mesh>
-      {/* Invisible hit area */}
+
       <mesh
         onClick={() => onSelect(node.id)}
-        onPointerOver={() => { if (!isGestureRunning) setHovered(true); }}
+        onPointerOver={() => {
+          if (!isGestureRunning) {
+            setHovered(true);
+          }
+        }}
         onPointerOut={() => setHovered(false)}
       >
-        <sphereGeometry args={[Math.max(radius * 2.8, 0.42), 6, 4]} />
+        <sphereGeometry args={[Math.max(radius * 2.6, 0.4), 6, 4]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
   );
 }
-
-// ── CameraRig ─────────────────────────────────────────────────────────────────
-
-type CameraRigProps = {
-  handSignalRef: React.MutableRefObject<HandNavigationSignal>;
-  layout: ReturnType<typeof buildTopologyLayout>;
-  isPaused: boolean;
-  panMode: boolean;
-  onGestureSelect: (noteId: string) => void;
-  onOpenNote: () => void;
-  zoomTierRef: React.MutableRefObject<ZoomTier>;
-  onTierChange: (t: ZoomTier) => void;
-  focusTarget: [number, number, number] | null;
-};
 
 function CameraRig({
   handSignalRef,
@@ -551,39 +503,38 @@ function CameraRig({
     }
   }, [camera, layout.center, layout.radius]);
 
-  useFrame(({ camera: cam }) => {
+  useFrame(({ camera: activeCamera }) => {
     const controls = controlsRef.current;
-    if (!controls) return;
+    if (!controls) {
+      return;
+    }
 
     const signal = handSignalRef.current;
 
-    // Pan (Pointing_Up gesture) — horizontal and vertical
     if (Math.abs(signal.panDelta.x) > 0.001 || Math.abs(signal.panDelta.y) > 0.001) {
-      const dist = controls.getDistance();
-      const panScale = dist * 0.06;
+      const distance = controls.getDistance();
+      const panScale = distance * 0.06;
 
       const right = new Vector3();
-      right.subVectors(cam.position, controls.target).normalize();
-      right.crossVectors(cam.up, right).normalize();
+      right.subVectors(activeCamera.position, controls.target).normalize();
+      right.crossVectors(activeCamera.up, right).normalize();
 
       controls.target.addScaledVector(right, signal.panDelta.x * panScale);
-      cam.position.addScaledVector(right, signal.panDelta.x * panScale);
+      activeCamera.position.addScaledVector(right, signal.panDelta.x * panScale);
 
-      // Vertical pan — screen Y is inverted relative to world Y
       controls.target.y -= signal.panDelta.y * panScale;
-      cam.position.y -= signal.panDelta.y * panScale;
+      activeCamera.position.y -= signal.panDelta.y * panScale;
 
       signal.panDelta.x *= 0.72;
       signal.panDelta.y *= 0.72;
     }
 
-    // Orbit + zoom (when not paused)
     if (signal.active && !isPaused) {
       controls.setAzimuthalAngle(controls.getAzimuthalAngle() - signal.deltaAzimuth);
       controls.setPolarAngle(clamp(signal.deltaPolar + controls.getPolarAngle(), 0.24, Math.PI - 0.24));
 
       if (Math.abs(signal.zoomDelta) > 0.004) {
-        const scale = 1 + Math.min(0.14, Math.abs(signal.zoomDelta) * 2.0);
+        const scale = 1 + Math.min(0.14, Math.abs(signal.zoomDelta) * 2);
         if (signal.zoomDelta > 0) {
           controls.dollyIn(scale);
         } else {
@@ -596,9 +547,8 @@ function CameraRig({
       signal.zoomDelta *= 0.68;
     }
 
-    // Smooth camera focus toward selected node (only when not actively gesturing)
     if (focusTarget && !signal.active) {
-      const targetY = focusTarget[1] + 1.0;
+      const targetY = focusTarget[1] + 1;
       controls.target.x += (focusTarget[0] - controls.target.x) * 0.04;
       controls.target.y += (targetY - controls.target.y) * 0.04;
       controls.target.z += (focusTarget[2] - controls.target.z) * 0.04;
@@ -606,29 +556,30 @@ function CameraRig({
 
     controls.update();
 
-    // Handle gesture tap triggers (select / open note)
     if (signal.gestureTrigger) {
       const { type, cursor } = signal.gestureTrigger;
-      signal.gestureTrigger = null; // consume immediately
+      signal.gestureTrigger = null;
 
-      const v = new Vector3();
+      const projected = new Vector3();
       let nearest: string | null = null;
-      let nearestDist = Infinity;
+      let nearestDistance = Infinity;
 
       for (const node of layout.nodes) {
-        v.set(node.position[0], node.position[1], node.position[2]);
-        v.project(cam);
-        if (v.z > 1) continue;
-        const sx = (v.x + 1) / 2;
-        const sy = (1 - v.y) / 2;
-        const d = Math.hypot(sx - cursor.x, sy - cursor.y);
-        if (d < nearestDist) {
-          nearestDist = d;
+        projected.set(node.position[0], node.position[1], node.position[2]);
+        projected.project(activeCamera);
+        if (projected.z > 1) continue;
+
+        const screenX = (projected.x + 1) / 2;
+        const screenY = (1 - projected.y) / 2;
+        const distance = Math.hypot(screenX - cursor.x, screenY - cursor.y);
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
           nearest = node.id;
         }
       }
 
-      if (nearest && nearestDist < 0.15) {
+      if (nearest && nearestDistance < 0.15) {
         if (type === 'select') {
           onGestureSelect(nearest);
         } else {
@@ -637,18 +588,19 @@ function CameraRig({
       }
     }
 
-    // Zoom tier classification with hysteresis
-    const dist = controls.getDistance();
-    const cur = zoomTierRef.current;
-    let next = cur;
-    const H = 1.0;
-    if (cur !== 'atlas' && dist > 22 + H) next = 'atlas';
-    else if (cur === 'atlas' && dist < 22 - H) next = 'explore';
-    else if (cur !== 'close' && dist < 10 - H) next = 'close';
-    else if (cur === 'close' && dist > 10 + H) next = 'explore';
-    if (next !== cur) {
-      zoomTierRef.current = next;
-      onTierChange(next);
+    const distance = controls.getDistance();
+    const currentTier = zoomTierRef.current;
+    let nextTier = currentTier;
+    const hysteresis = 1;
+
+    if (currentTier !== 'atlas' && distance > 22 + hysteresis) nextTier = 'atlas';
+    else if (currentTier === 'atlas' && distance < 22 - hysteresis) nextTier = 'explore';
+    else if (currentTier !== 'close' && distance < 10 - hysteresis) nextTier = 'close';
+    else if (currentTier === 'close' && distance > 10 + hysteresis) nextTier = 'explore';
+
+    if (nextTier !== currentTier) {
+      zoomTierRef.current = nextTier;
+      onTierChange(nextTier);
     }
   });
 
@@ -672,14 +624,15 @@ function CameraRig({
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function capitalizeFirst(str: string) {
-  if (!str) return str;
-  const word = str.split(/[\s_-]/)[0] ?? str;
+function capitalizeFirst(value: string) {
+  if (!value) {
+    return value;
+  }
+
+  const word = value.split(/[\s_-]/)[0] ?? value;
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
