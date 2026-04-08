@@ -17,6 +17,11 @@ dist-ssr
 public/data/vault-graph.json
 cerebro.config.json
 
+# Incremental build cache (safe to delete; rebuilt on next run)
+.cerebro-cache/
+__pycache__/
+*.pyc
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

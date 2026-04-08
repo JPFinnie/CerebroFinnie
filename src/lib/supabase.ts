@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
-const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '';
+const supabasePublishableKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ??
+  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ??
+  '';
 export const defaultLoginEmail = import.meta.env.VITE_CEREBRO_LOGIN_EMAIL?.trim() || 'james_finnie@icloud.com';
 export const defaultLoginPassword = import.meta.env.VITE_CEREBRO_LOGIN_PASSWORD?.trim() || '';
 export const isSupabaseRuntimeEnabled = Boolean(supabaseUrl && supabasePublishableKey);

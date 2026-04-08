@@ -32,6 +32,12 @@ export interface VaultEdge {
   source: string;
   target: string;
   weight: number;
+  /** Edge origin: wikilink = explicit [[link]], semantic = LLM-extracted (graphify), sibling = synthetic folder chain */
+  kind?: 'wikilink' | 'semantic' | 'sibling';
+  /** Graphify confidence label for semantic edges */
+  confidence?: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+  /** Graphify relation type for semantic edges (e.g. 'semantically_similar_to', 'references') */
+  relation?: string;
 }
 
 export interface VaultGraph {

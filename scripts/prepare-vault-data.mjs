@@ -56,9 +56,13 @@ async function main() {
 
 function getSupabaseRuntimeConfig() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
-  const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const supabasePublishableKey =
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_SUPABASE_ANON_KEY?.trim();
   const serverSupabaseUrl = process.env.SUPABASE_URL?.trim();
-  const serverSupabaseSecret = process.env.SUPABASE_SECRET_KEY?.trim();
+  const serverSupabaseSecret =
+    process.env.SUPABASE_SECRET_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const snapshotBucket = process.env.SUPABASE_SNAPSHOT_BUCKET?.trim() || DEFAULT_SUPABASE_BUCKET;
   const snapshotPath = process.env.SUPABASE_SNAPSHOT_PATH?.trim() || DEFAULT_SUPABASE_PATH;
 
