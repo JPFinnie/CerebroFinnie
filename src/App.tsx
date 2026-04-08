@@ -26,7 +26,7 @@ function App() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [isFullNoteOpen, setIsFullNoteOpen] = useState(false);
-  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
   const [isInspectorPanelOpen, setIsInspectorPanelOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [panMode, setPanMode] = useState(false);
@@ -318,7 +318,7 @@ function App() {
     return (
       <div className="loading-shell">
         <p className="eyebrow">Cerebro Atlas</p>
-        <h1>Loading your vault terrain...</h1>
+        <h1>Loading your vault graph...</h1>
         <p>Reading the generated note graph and preparing the 3D scene.</p>
       </div>
     );
